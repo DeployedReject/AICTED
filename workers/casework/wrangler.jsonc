@@ -13,6 +13,7 @@
     },
   ],
   "services": [
+    { "binding": "DATABASE", "service": "aicted-database" },
     { "binding": "RELEVANCE", "service": "aicted-relevance" },
     { "binding": "NOTIFICATIONS", "service": "aicted-notifications" },
   ],

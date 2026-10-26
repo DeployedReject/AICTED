@@ -36,7 +36,8 @@ export const defaultConfig: RuntimeConfig = {
 export async function runtime(env: Env, demo: number): Promise<RuntimeConfig> {
   return {
     ...defaultConfig,
-    ...(await env.DB.prepare("SELECT * FROM runtime_settings WHERE is_demo=?")
+    ...(await (env.CONTROL_DB || env.DB)
+      .prepare("SELECT * FROM runtime_settings WHERE is_demo=?")
       .bind(demo)
       .first<RuntimeConfig>()),
     is_demo: demo,

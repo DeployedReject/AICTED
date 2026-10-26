@@ -7,6 +7,7 @@ export interface Official {
   role: UserRole;
   manager_id: string | null;
   is_demo: number;
+  report_scope: "personal" | "team" | "bureau";
   email?: string;
   active?: number;
 }

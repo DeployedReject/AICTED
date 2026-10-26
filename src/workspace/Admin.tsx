@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { Official } from "../../packages/shared/types";
 import { api } from "./api";
@@ -6,7 +6,7 @@ import { reduced } from "./Motion";
 import EmailSettings from "./EmailSettings";
 import type { MailConfig } from "./EmailSettings";
 import CreateAccount from "./CreateAccount";
-import SecretField from "./SecretField";
+import ITHelp from "./ITHelp";
 import { bureauName } from "../../packages/shared/catalog";
 import OfficialPicker, { clearOfficialSearchCache } from "./OfficialPicker";
 interface Config {
@@ -24,18 +24,8 @@ interface Config {
   is_demo: number;
   encryption_ready: boolean;
   current_id: string;
-  settings: { support_email: string; sender_email: string };
   officials: Official[];
   current_database: { name: string; type: string };
-  migration: {
-    source: string;
-    d1_database_id: string;
-    host: string;
-    port: number;
-    database_name: string;
-    username: string;
-    ssl_mode: string;
-  };
 }
 export default function Admin({
   refresh,
@@ -46,9 +36,7 @@ export default function Admin({
   version: number;
   section: string;
 }) {
-  const helpId = useId();
   const [accountView, setAccountView] = useState("directory");
-  const [source, setSource] = useState("");
   const [account, setAccount] = useState<Official | null>(null),
     [accountRole, setAccountRole] = useState("official");
   const [data, setData] = useState<Config | null>(null),
@@ -72,6 +60,25 @@ export default function Admin({
       active = false;
     };
   }, [version, section]);
+  useEffect(() => {
+    if (!account?.id) return;
+    let current = true;
+    api<{ official: Official }>(
+      "/admin/account?id=" + encodeURIComponent(account.id),
+    )
+      .then((result) => {
+        if (current) {
+          setAccount(result.official);
+          setAccountRole(result.official.role);
+        }
+      })
+      .catch((e) => {
+        if (current) setError(e.message);
+      });
+    return () => {
+      current = false;
+    };
+  }, [account?.id]);
   async function save(e: FormEvent<HTMLFormElement>, action: string) {
     e.preventDefault();
     setBusy(true);
@@ -106,6 +113,7 @@ export default function Admin({
     );
   return (
     <div className="ws-admin">
+      <ITHelp section={section} />
       {error && (
         <p role="alert" className="ws-error">
           {error}
@@ -143,12 +151,17 @@ export default function Admin({
       {section === "Accounts" && accountView === "directory" && (
         <div className="ws-admin-grid">
           <section className="ws-card">
-            <h2>Authority</h2>
+            <h2>Account access</h2>
+            <p className="ws-description">
+              Select an existing account to change its access and reporting
+              line. Designation is the job title; the reporting manager reviews
+              this person’s work.
+            </p>
             <form onSubmit={(e) => void save(e, "reporting")}>
               <OfficialPicker
                 name="official_id"
                 kind="account"
-                label="Official"
+                label="Find official"
                 officials={data.officials}
                 required
                 onSelect={(o) => {
@@ -157,7 +170,7 @@ export default function Admin({
                 }}
               />
               <label title="Managers review officials in their configured reporting tree.">
-                Role
+                Access level
                 <select
                   name="role"
                   value={accountRole}
@@ -167,10 +180,32 @@ export default function Admin({
                   <option value="manager">Manager</option>
                 </select>
               </label>
+              <label>
+                Report access
+                <select
+                  key={(account?.id || "") + accountRole}
+                  name="report_scope"
+                  disabled={accountRole === "official"}
+                  defaultValue={
+                    account?.report_scope === "bureau" ? "bureau" : "team"
+                  }
+                >
+                  {accountRole === "official" ? (
+                    <option value="personal">Personal workload</option>
+                  ) : (
+                    <>
+                      <option value="team">Reporting team</option>
+                      <option value="bureau">
+                        Bureau Head / Cell In-charge
+                      </option>
+                    </>
+                  )}
+                </select>
+              </label>
               <OfficialPicker
                 key={account?.id || "manager"}
                 name="manager_id"
-                label="Manager"
+                label="Reporting manager"
                 officials={data.officials}
                 role="manager"
                 bureau={account?.bureau || ""}
@@ -201,7 +236,7 @@ export default function Admin({
             )}
           </section>
           <section className="ws-card ws-accounts-list">
-            <h2>Officials</h2>
+            <h2>Official directory</h2>
             <div className="ws-table-scroll">
               <table>
                 <thead>
@@ -235,11 +270,11 @@ export default function Admin({
       )}
       {section === "Institutions" && (
         <section className="ws-card ws-admin-form">
-          <h2>Register</h2>
+          <h2>Register institution</h2>
           <form onSubmit={(e) => void save(e, "institution")}>
             {[
-              ["name", "Name"],
-              ["permanent_id", "ID"],
+              ["name", "Institution name"],
+              ["permanent_id", "Permanent ID"],
               ["city", "City"],
               ["state", "State"],
               ["region", "Region"],
@@ -272,10 +307,10 @@ export default function Admin({
       {section === "Server" && (
         <div className="ws-admin-grid">
           <section className="ws-card">
-            <h2>Server</h2>
+            <h2>Portal settings</h2>
             <form onSubmit={(e) => void save(e, "server")}>
               <label>
-                Name
+                Portal name
                 <input
                   name="site_name"
                   defaultValue={data.runtime.site_name}
@@ -284,7 +319,7 @@ export default function Admin({
                 />
               </label>
               <label title="Public HTTPS URL used in recovery and case-update links.">
-                URL
+                Public address
                 <input
                   name="public_url"
                   type="url"
@@ -293,7 +328,7 @@ export default function Admin({
                 />
               </label>
               <label title="Session lifetime after sign-in. Changing this affects new sessions.">
-                Session hours
+                Session duration (hours)
                 <input
                   name="session_hours"
                   type="number"
@@ -304,7 +339,7 @@ export default function Admin({
                 />
               </label>
               <label title="Days before each case-specific due date to begin reminders. This does not impose a universal case deadline.">
-                Reminder days
+                Reminder lead time (days)
                 <input
                   name="reminder_days"
                   type="number"
@@ -320,7 +355,7 @@ export default function Admin({
             </form>
           </section>
           <section className="ws-card">
-            <h2>Setup</h2>
+            <h2>Setup status</h2>
             <dl>
               <dt>Database</dt>
               <dd>{data.current_database.name}</dd>
@@ -334,7 +369,7 @@ export default function Admin({
               <dd>{data.runtime.reminders_enabled ? "Enabled" : "Disabled"}</dd>
             </dl>
             {data.is_demo === 1 && <a href="/it/setup">Production setup →</a>}
-            <h3>Activity</h3>
+            <h3>Recent changes</h3>
             {data.logs.map((r, i) => (
               <p key={i}>
                 <b>{r.action.replaceAll("_", " ")}</b>
@@ -348,7 +383,7 @@ export default function Admin({
       )}
       {section === "Bureaus" && (
         <section className="ws-card">
-          <h2>Catalogue</h2>
+          <h2>Bureau catalogue</h2>
           <div className="ws-table-scroll">
             <table>
               <thead>
@@ -407,168 +442,6 @@ export default function Admin({
               Verified
             </label>
             <button disabled={busy || !!data.is_demo}>Save</button>
-          </form>
-        </section>
-      )}
-      {section === "Database" && (
-        <section className="ws-card ws-admin-form ws-database">
-          <form onSubmit={(e) => void save(e, "migration")}>
-            <div className="ws-current-db">
-              <div>
-                <span>Current Database</span>
-                <strong>{data.current_database.name}</strong>
-              </div>
-              <div>
-                <span>Type</span>
-                <strong>{data.current_database.type}</strong>
-              </div>
-            </div>
-            <div className="ws-source-label">
-              <label htmlFor={helpId + "source"}>Source</label>
-              <details
-                className="ws-help"
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") e.currentTarget.open = false;
-                }}
-              >
-                <summary
-                  aria-label="Database configuration help"
-                  aria-controls={helpId}
-                >
-                  ?
-                </summary>
-                <div id={helpId} role="note">
-                  <strong>
-                    {source === "d1" ? "Cloudflare D1" : "PostgreSQL"}
-                  </strong>
-                  <p>
-                    Configure the database to use after migration. D1 stays
-                    active until the new connection and data are verified.
-                  </p>
-                  <a
-                    href="/postgres-spec.html"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    More details ↗
-                  </a>
-                </div>
-              </details>
-            </div>
-            <select
-              id={helpId + "source"}
-              aria-label="Database source"
-              name="source"
-              required
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-            >
-              <option value="" disabled>
-                Select
-              </option>
-              <option value="d1">Cloudflare D1</option>
-              <option value="postgres">PostgreSQL</option>
-            </select>
-            {source === "d1" && (
-              <>
-                <label>
-                  Database
-                  <input
-                    name="database_name"
-                    defaultValue={
-                      data.migration.source === "d1"
-                        ? data.migration.database_name
-                        : ""
-                    }
-                    required
-                    maxLength={80}
-                  />
-                </label>
-                <label title="Database UUID from Cloudflare. A matching Worker binding must be provisioned and the data verified before switching.">
-                  ID
-                  <input
-                    name="d1_database_id"
-                    defaultValue={data.migration.d1_database_id}
-                    placeholder="Database UUID"
-                    required
-                    maxLength={36}
-                  />
-                </label>
-              </>
-            )}
-            {source === "postgres" && (
-              <>
-                <div className="ws-db-fields">
-                  <label>
-                    Host
-                    <input
-                      name="host"
-                      defaultValue={data.migration.host}
-                      placeholder="db.example.org"
-                      required
-                      maxLength={253}
-                    />
-                  </label>
-                  <label>
-                    Port
-                    <input
-                      name="port"
-                      type="number"
-                      defaultValue={data.migration.port}
-                      min={1}
-                      max={65535}
-                      required
-                    />
-                  </label>
-                </div>
-                <label>
-                  Database
-                  <input
-                    name="database_name"
-                    defaultValue={
-                      data.migration.source === "postgres"
-                        ? data.migration.database_name
-                        : ""
-                    }
-                    required
-                    maxLength={80}
-                  />
-                </label>
-                <label title="Restricted application role. Configure its password as a Cloudflare/Hyperdrive secret during provisioning.">
-                  User
-                  <input
-                    name="username"
-                    defaultValue={data.migration.username}
-                    required
-                    maxLength={80}
-                  />
-                </label>
-                <label title="TLS is required. Verify full validates the server certificate and hostname.">
-                  TLS
-                  <select
-                    name="ssl_mode"
-                    defaultValue={data.migration.ssl_mode}
-                  >
-                    <option value="verify-full">Verify full</option>
-                    <option value="require">Required</option>
-                  </select>
-                </label>
-              </>
-            )}
-            {source === "postgres" && (
-              <SecretField
-                name="password"
-                label="Password"
-                secretName="postgres_password"
-                saved={data.secrets.some((s) => s.name === "postgres_password")}
-                disabled={!!data.is_demo}
-              />
-            )}
-            {source && (
-              <button className="ws-primary" disabled={busy}>
-                Save
-              </button>
-            )}
           </form>
         </section>
       )}

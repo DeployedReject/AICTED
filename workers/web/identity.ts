@@ -36,6 +36,12 @@ export async function identity(
   )
     fail(429, "Please wait before trying again.");
   const input = await body(request);
+  if (
+    path === "/api/auth/reset" &&
+    typeof input.token === "string" &&
+    input.token.startsWith("it.")
+  )
+    env = { ...env, DB: env.CONTROL_DB || env.DB };
   if (path === "/api/auth/setup") {
     if (!env.BOOTSTRAP_TOKEN || input.setup_code !== env.BOOTSTRAP_TOKEN)
       fail(403, "The setup code is incorrect.");
@@ -86,11 +92,20 @@ export async function identity(
       });
     const address =
       typeof input.email === "string" ? input.email.trim().slice(0, 254) : "";
-    const user = await env.DB.prepare(
-      `SELECT ${userColumns},email FROM officials WHERE email=? COLLATE NOCASE AND active=1 AND is_demo=0`,
-    )
+    const controlIT = await (env.CONTROL_DB || env.DB)
+      .prepare(
+        `SELECT ${userColumns},email FROM officials WHERE email=? COLLATE NOCASE AND role='it' AND active=1 AND is_demo=0`,
+      )
       .bind(address)
       .first<Official & { email: string }>();
+    if (controlIT) env = { ...env, DB: env.CONTROL_DB || env.DB };
+    const user =
+      controlIT ||
+      (await env.DB.prepare(
+        `SELECT ${userColumns},email FROM officials WHERE email=? COLLATE NOCASE AND active=1 AND is_demo=0`,
+      )
+        .bind(address)
+        .first<Official & { email: string }>());
     if (!user) return response();
     const cfg = await runtime(env, 0);
     if (!cfg.recovery_enabled || !env.NOTIFICATIONS) return response();
@@ -100,7 +115,10 @@ export async function identity(
       .bind(user.id, now().slice(0, 10))
       .run();
     if (!quota.meta.changes) return response();
-    const token = crypto.randomUUID() + crypto.randomUUID(),
+    const token =
+        (user.role === "it" ? "it." : "") +
+        crypto.randomUUID() +
+        crypto.randomUUID(),
       hash = await sha(token);
     await env.DB.batch([
       env.DB.prepare(

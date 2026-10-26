@@ -42,17 +42,23 @@ export async function session(
 ): Promise<Official & { portal: string }> {
   const token = cookieToken(request);
   if (!token || token.length > 150) fail(401, "Please sign in.");
-  const user = await env.DB.prepare(
-    `SELECT ${userColumns
-      .split(",")
-      .map((c) => "u." + c)
-      .join(
-        ",",
-      )},s.portal FROM sessions s JOIN officials u ON u.id=s.official_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`,
-  )
+  const db = token.startsWith("it.") ? env.CONTROL_DB || env.DB : env.DB;
+  const user = await db
+    .prepare(
+      `SELECT ${userColumns
+        .split(",")
+        .map((c) => "u." + c)
+        .join(
+          ",",
+        )},s.portal FROM sessions s JOIN officials u ON u.id=s.official_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`,
+    )
     .bind(await sha(token), Math.floor(Date.now() / 1000))
     .first<Official & { portal: string }>();
   if (!user) fail(401, "Your session has expired. Please sign in again.");
+  if (token.startsWith("it.") && user.role !== "it")
+    fail(401, "Please sign in again.");
+  if (user.role === "it" && env.CONTROL_DB && !token.startsWith("it."))
+    fail(401, "Please sign in again.");
   if ((user.portal === "it") !== (user.role === "it"))
     fail(401, "Please sign in again.");
   return user;

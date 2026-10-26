@@ -106,7 +106,7 @@ export default function OfficialPicker({
       (!role || o.role === role) &&
       (!bureau || o.bureau === bureau) &&
       (!excludeBureau || o.bureau !== excludeBureau) &&
-      !(kind === "account" && o.id === "0000") &&
+      !(kind === "account" && ["0000", "0001"].includes(o.id)) &&
       o.id !== excludeId,
   );
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function OfficialPicker({
             [...combined.values()]
               .filter(
                 (o) =>
-                  !(kind === "account" && o.id === "0000") &&
+                  !(kind === "account" && ["0000", "0001"].includes(o.id)) &&
                   o.id !== excludeId,
               )
               .slice(0, 8),

@@ -6,7 +6,18 @@ import { runtime } from "../runtime";
 export async function admin(request: Request, env: Env, user: Official) {
   if (user.role !== "it") fail(403, "IT administration access is required.");
   const db = env.DB;
+  const control = env.CONTROL_DB || db;
   const url = new URL(request.url);
+  if (url.pathname === "/api/admin/account" && request.method === "GET") {
+    const account = await db
+      .prepare(
+        `SELECT ${userColumns},email,active FROM officials WHERE id=? AND is_demo=? AND role<>'it'`,
+      )
+      .bind((url.searchParams.get("id") || "").slice(0, 80), user.is_demo)
+      .first();
+    if (!account) fail(404, "Official not found.");
+    return json({ official: account });
+  }
   if (url.pathname === "/api/admin/officials" && request.method === "GET") {
     const query = (url.searchParams.get("q") || "").trim().slice(0, 80);
     if (query.length < 2) return json({ officials: [], more: false });
@@ -34,65 +45,42 @@ export async function admin(request: Request, env: Env, user: Official) {
 
   if (request.method === "GET") {
     const section = url.searchParams.get("section") || "Accounts";
-    const [
-      settings,
-      officials,
-      migration,
-      cfg,
-      secrets,
-      units,
-      logs,
-      accountEmail,
-    ] = await Promise.all([
-      db
-        .prepare(
-          "SELECT support_email,sender_email FROM workspace_settings WHERE is_demo=?",
-        )
-        .bind(user.is_demo)
-        .first(),
-      section === "Accounts"
-        ? db
-            .prepare(
-              `SELECT ${userColumns},email,active FROM officials WHERE is_demo=? ORDER BY name LIMIT 100`,
-            )
-            .bind(user.is_demo)
-            .all()
-        : Promise.resolve({ results: [] }),
-      section === "Database"
-        ? db
-            .prepare(
-              "SELECT source,d1_database_id,host,port,database_name,username,ssl_mode,updated_at FROM migration_settings WHERE is_demo=?",
-            )
-            .bind(user.is_demo)
-            .first()
-        : Promise.resolve(null),
-      runtime(env, user.is_demo),
-      db
-        .prepare(
-          "SELECT name,last_four,updated_at FROM secret_store WHERE is_demo=?",
-        )
-        .bind(user.is_demo)
-        .all(),
-      db
-        .prepare(
-          "SELECT code,name,unit_type,active,verification FROM org_units ORDER BY name",
-        )
-        .all(),
-      section === "Server"
-        ? db
-            .prepare(
-              "SELECT action,detail,created_at FROM admin_audit WHERE is_demo=? ORDER BY created_at DESC LIMIT 15",
-            )
-            .bind(user.is_demo)
-            .all()
-        : Promise.resolve({ results: [] }),
-      db
-        .prepare("SELECT email FROM officials WHERE id=?")
-        .bind(user.id)
-        .first<{ email: string }>(),
-    ]);
+    const [officials, cfg, secrets, units, logs, accountEmail] =
+      await Promise.all([
+        section === "Accounts"
+          ? db
+              .prepare(
+                `SELECT ${userColumns},email,active FROM officials WHERE is_demo=? ORDER BY name LIMIT 100`,
+              )
+              .bind(user.is_demo)
+              .all()
+          : Promise.resolve({ results: [] }),
+        runtime(env, user.is_demo),
+        control
+          .prepare(
+            "SELECT name,last_four,updated_at FROM secret_store WHERE is_demo=?",
+          )
+          .bind(user.is_demo)
+          .all(),
+        db
+          .prepare(
+            "SELECT code,name,unit_type,active,verification FROM org_units ORDER BY name",
+          )
+          .all(),
+        section === "Server"
+          ? db
+              .prepare(
+                "SELECT action,detail,created_at FROM admin_audit WHERE is_demo=? ORDER BY created_at DESC LIMIT 15",
+              )
+              .bind(user.is_demo)
+              .all()
+          : Promise.resolve({ results: [] }),
+        db
+          .prepare("SELECT email FROM officials WHERE id=?")
+          .bind(user.id)
+          .first<{ email: string }>(),
+      ]);
     return json({
-      settings: settings || { support_email: "", sender_email: "" },
       officials: officials.results,
       runtime: cfg,
       secrets: secrets.results,
@@ -102,81 +90,16 @@ export async function admin(request: Request, env: Env, user: Official) {
       encryption_ready: !!env.CONFIG_KEY,
       is_demo: user.is_demo,
       current_id: user.id,
-      current_database: { name: "aicted-workspace", type: "SQLite" },
-      migration: migration || {
-        source: "postgres",
-        d1_database_id: "",
-        host: "",
-        port: 5432,
-        database_name: "",
-        username: "",
-        ssl_mode: "verify-full",
-      },
+      current_database:
+        section === "Server"
+          ? await activeDatabase(env, user)
+          : { name: "", type: "" },
     });
   }
   if (request.method !== "POST") fail(405, "Method not allowed.");
   const input = await body(request);
   const configured = await production(input, env, user);
   if (configured) return configured;
-  if (input.action === "migration") {
-    if (input.source === "d1") {
-      const name = textField(input.database_name, "Database", 80),
-        databaseId = textField(input.d1_database_id, "Database ID", 36);
-      if (
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          databaseId,
-        )
-      )
-        fail(400, "Enter a valid D1 database ID.");
-      await db
-        .prepare(
-          "INSERT INTO migration_settings(is_demo,host,port,database_name,username,ssl_mode,updated_at,updated_by,source,d1_database_id) VALUES(?,'',5432,?,'','verify-full',?,?,'d1',?) ON CONFLICT(is_demo) DO UPDATE SET source='d1',d1_database_id=excluded.d1_database_id,database_name=excluded.database_name,host='',username='',updated_at=excluded.updated_at,updated_by=excluded.updated_by",
-        )
-        .bind(user.is_demo, name, now(), user.id, databaseId)
-        .run();
-      return json({ ok: true, active: "D1" });
-    }
-    if (input.source !== "postgres") fail(400, "Choose a database source.");
-    const host = textField(input.host, "Host", 253),
-      databaseName = textField(input.database_name, "Database", 80),
-      username = textField(input.username, "User", 80),
-      port = Number(input.port);
-    if (
-      !/^[a-zA-Z0-9.-]+$/.test(host) ||
-      !Number.isInteger(port) ||
-      port < 1 ||
-      port > 65535
-    )
-      fail(400, "Enter a valid hostname and port.");
-    if (!["verify-full", "require"].includes(String(input.ssl_mode)))
-      fail(400, "TLS is required.");
-    await db
-      .prepare(
-        "INSERT INTO migration_settings(is_demo,host,port,database_name,username,ssl_mode,updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(is_demo) DO UPDATE SET source='postgres',d1_database_id='',host=excluded.host,port=excluded.port,database_name=excluded.database_name,username=excluded.username,ssl_mode=excluded.ssl_mode,updated_at=excluded.updated_at,updated_by=excluded.updated_by",
-      )
-      .bind(
-        user.is_demo,
-        host,
-        port,
-        databaseName,
-        username,
-        input.ssl_mode,
-        now(),
-        user.id,
-      )
-      .run();
-    if (typeof input.password === "string" && input.password.trim())
-      await production(
-        {
-          action: "secret_save",
-          name: "postgres_password",
-          value: input.password,
-        },
-        env,
-        user,
-      );
-    return json({ ok: true, active: "D1" });
-  }
   if (input.action === "reporting") {
     const officialId = textField(input.official_id, "Official", 80),
       managerId = input.manager_id
@@ -190,7 +113,7 @@ export async function admin(request: Request, env: Env, user: Official) {
       )
       .bind(officialId, user.is_demo)
       .first<Official>();
-    if (!target || target.role === "it" || target.id === "0000")
+    if (!target || target.role === "it" || ["0000", "0001"].includes(target.id))
       fail(400, "This account cannot be changed here.");
     if (managerId) {
       const manager = await db
@@ -224,11 +147,17 @@ export async function admin(request: Request, env: Env, user: Official) {
         400,
         "Reassign this manager’s team before removing manager authority.",
       );
+    const reportAccess =
+      input.role === "official"
+        ? "personal"
+        : String(input.report_scope || "team");
+    if (!["personal", "team", "bureau"].includes(reportAccess))
+      fail(400, "Choose report access.");
     await db
       .prepare(
-        "UPDATE officials SET role=?,manager_id=? WHERE id=? AND is_demo=?",
+        "UPDATE officials SET role=?,manager_id=?,report_scope=? WHERE id=? AND is_demo=?",
       )
-      .bind(input.role, managerId, officialId, user.is_demo)
+      .bind(input.role, managerId, reportAccess, officialId, user.is_demo)
       .run();
     return json({ ok: true });
   }
@@ -284,4 +213,25 @@ export async function admin(request: Request, env: Env, user: Official) {
     return json({ ok: true });
   }
   return fail(400, "Unknown administration action.");
+}
+
+async function activeDatabase(env: Env, user: Official) {
+  if (!env.DATABASE) return { name: "aicted-workspace", type: "SQLite" };
+  const response = await env.DATABASE.fetch(
+    new Request("https://database/manage", {
+      headers: {
+        "x-internal-secret": env.INTERNAL_SECRET,
+        "x-actor": JSON.stringify(user),
+      },
+    }),
+  );
+  if (!response.ok)
+    return { name: "Unavailable", type: "Check Database settings" };
+  const data = (await response.json()) as {
+    active: { name: string; source: string };
+  };
+  return {
+    name: data.active.name,
+    type: data.active.source === "postgres" ? "PostgreSQL" : "SQLite",
+  };
 }

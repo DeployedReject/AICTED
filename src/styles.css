@@ -1292,3 +1292,20 @@ body {
 .identity-page a {
   color: var(--blue);
 }
+
+/* Login content fills the current viewport; the footer starts below it. */
+.portal {
+  grid-template-rows: minmax(100dvh, auto) auto;
+}
+.portal > .login-panel {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+.portal > .network-panel {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+.portal > .login-footer {
+  grid-row: 2;
+  align-self: start;
+}

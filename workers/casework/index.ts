@@ -1,3 +1,4 @@
+import { applicationEnv } from "../database/client";
 import type { Official } from "../../packages/shared/types";
 import type { Env } from "../shared";
 import {
@@ -18,6 +19,7 @@ import {
   mayAct,
   readable,
   scope,
+  reportScope,
   teamMember,
 } from "./access";
 
@@ -40,9 +42,9 @@ function event(
     .bind(id("event"), caseId, kind, user.id, message, stamp);
 }
 async function summary(env: Env, user: Official) {
-  const s = scope(user);
+  const s = reportScope(user);
   return env.DB.prepare(
-    `${s.sql} SELECT COUNT(*) AS total,COALESCE(SUM(intake='Approved' AND status='Pending'),0) AS pending,COALESCE(SUM(intake='Approved' AND status IN('Under process','Awaiting information')),0) AS processing,COALESCE(SUM(intake='Approved' AND status='Disposed'),0) AS disposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at<?),0) AS overdue,COALESCE(SUM(intake='Approved' AND escalated=1 AND status<>'Disposed'),0) AS escalated,COALESCE(SUM(intake='Submitted'),0) AS proposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=cases.institution_id AND other.is_demo=cases.is_demo AND other.bureau<>cases.bureau AND other.intake='Approved' AND other.status<>'Disposed')),0) AS overlaps,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at>=? AND due_at<=?),0) AS due_soon FROM cases WHERE id IN(SELECT id FROM visible)`,
+    `${s.sql} SELECT COUNT(*) AS total,COALESCE(SUM(intake='Approved' AND status='Pending'),0) AS pending,COALESCE(SUM(intake='Approved' AND status IN('Under process','Awaiting information')),0) AS processing,COALESCE(SUM(intake='Approved' AND status='Disposed'),0) AS disposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at<?),0) AS overdue,COALESCE(SUM(intake='Approved' AND escalated=1 AND status<>'Disposed'),0) AS escalated,COALESCE(SUM(intake='Submitted'),0) AS proposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=cases.institution_id AND other.is_demo=cases.is_demo AND other.bureau<>cases.bureau AND other.intake='Approved' AND other.status<>'Disposed')),0) AS overlaps,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at>=? AND due_at<=?),0) AS due_soon FROM cases WHERE id IN(SELECT id FROM measured)`,
   )
     .bind(
       ...s.args,
@@ -54,6 +56,7 @@ async function summary(env: Env, user: Official) {
 }
 export default {
   fetch(request: Request, env: Env) {
+    env = applicationEnv(env, request.headers.get("x-db-generation"));
     return guard(async () => {
       const user = actor(request, env),
         db = env.DB,
@@ -64,18 +67,24 @@ export default {
         return overlaps(env, user);
       if (path === "/api/officials" && request.method === "GET")
         return directory(url, env, user);
-      if (path === "/api/admin" || path === "/api/admin/officials")
+      if (
+        path === "/api/admin" ||
+        path === "/api/admin/officials" ||
+        path === "/api/admin/account"
+      )
         return admin(request, env, user);
       if (request.method === "GET" && path === "/api/bootstrap") {
+        if (user.role === "it") env = { ...env, DB: env.CONTROL_DB || env.DB };
+        const bootDb = env.DB;
         const [officials, tags, counts, units] = await Promise.all([
           Promise.resolve({ results: [user] }),
-          db
+          bootDb
             .prepare(
               "SELECT code,label,group_name FROM tags WHERE active=1 ORDER BY group_name,label LIMIT 100",
             )
             .all(),
           summary(env, user),
-          db
+          bootDb
             .prepare(
               "SELECT code,name,unit_type,verification FROM org_units WHERE active=1 ORDER BY name",
             )
@@ -195,14 +204,66 @@ export default {
           .all();
         return json({ officials: result.results });
       }
+      if (request.method === "GET" && path === "/api/manager-overview") {
+        if (user.role !== "manager") fail(403, "Manager access is required.");
+        const [team, proposals, counts, coordination] = await Promise.all([
+          db
+            .prepare(
+              `${s.sql} SELECT o.id,o.name,o.designation,o.bureau,COUNT(c.id) active_cases,COALESCE(SUM(CASE WHEN c.due_at<? THEN 1 ELSE 0 END),0) overdue FROM officials o LEFT JOIN cases c ON c.assigned_to=o.id AND c.intake='Approved' AND c.status<>'Disposed' AND c.is_demo=? WHERE o.id IN(SELECT id FROM team) AND o.id<>? AND o.active=1 AND o.bureau=? GROUP BY o.id ORDER BY o.name LIMIT 100`,
+            )
+            .bind(...s.args, now(), user.is_demo, user.id, user.bureau)
+            .all(),
+          db
+            .prepare(
+              `${s.sql} ${caseSelect} WHERE c.is_demo=? AND c.intake='Submitted' AND c.created_by IN(SELECT id FROM team) AND c.created_by<>? AND c.bureau=? ORDER BY c.received_at LIMIT 6`,
+            )
+            .bind(...s.args, user.is_demo, user.id, user.bureau)
+            .all(),
+          db
+            .prepare(
+              `${s.sql} SELECT (SELECT COUNT(*) FROM officials WHERE id IN(SELECT id FROM team) AND id<>? AND active=1 AND bureau=?) team_count,COUNT(*) n FROM cases WHERE is_demo=? AND intake='Submitted' AND created_by IN(SELECT id FROM team) AND created_by<>? AND bureau=?`,
+            )
+            .bind(
+              ...s.args,
+              user.id,
+              user.bureau,
+              user.is_demo,
+              user.id,
+              user.bureau,
+            )
+            .first<{ n: number; team_count: number }>(),
+          db
+            .prepare(
+              `${s.sql} SELECT COUNT(*) n FROM coordination_requests r JOIN cases c ON c.id=r.case_id WHERE c.is_demo=? AND ((r.status='Awaiting manager' AND r.requester_id IN(SELECT id FROM team) AND r.requester_id<>? AND c.bureau=?) OR (r.status='Awaiting Bureau' AND r.target_official_id IN(SELECT id FROM team) AND r.target_official_id<>? AND r.target_bureau=?))`,
+            )
+            .bind(
+              ...s.args,
+              user.is_demo,
+              user.id,
+              user.bureau,
+              user.id,
+              user.bureau,
+            )
+            .first<{ n: number }>(),
+        ]);
+        return json({
+          team: team.results,
+          proposals: proposals.results.map(caseRow),
+          approvals: counts?.n || 0,
+          team_count: counts?.team_count || 0,
+          coordination: coordination?.n || 0,
+        });
+      }
       if (request.method === "GET" && path === "/api/reports") {
+        const metrics = reportScope(user);
         const rows = await db
           .prepare(
-            `${s.sql} SELECT c.bureau,i.region,c.status,c.intake,c.escalated,c.received_at,c.due_at,c.updated_at,(SELECT MAX(created_at) FROM case_events e WHERE e.case_id=c.id AND e.kind='disposed') disposed_at,(SELECT COUNT(*) FROM case_events e WHERE e.case_id=c.id AND e.kind='transferred') transfers,(c.intake='Approved' AND c.status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=c.institution_id AND other.is_demo=c.is_demo AND other.bureau<>c.bureau AND other.intake='Approved' AND other.status<>'Disposed')) overlaps FROM cases c JOIN institutions i ON i.id=c.institution_id WHERE c.id IN(SELECT id FROM visible) ORDER BY c.received_at DESC LIMIT 500`,
+            `${metrics.sql} SELECT c.bureau,i.region,c.status,c.intake,c.escalated,c.received_at,c.due_at,c.updated_at,(SELECT MAX(created_at) FROM case_events e WHERE e.case_id=c.id AND e.kind='disposed') disposed_at,(SELECT COUNT(*) FROM case_events e WHERE e.case_id=c.id AND e.kind='transferred') transfers,(c.intake='Approved' AND c.status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=c.institution_id AND other.is_demo=c.is_demo AND other.bureau<>c.bureau AND other.intake='Approved' AND other.status<>'Disposed')) overlaps FROM cases c JOIN institutions i ON i.id=c.institution_id WHERE c.id IN(SELECT id FROM measured) ORDER BY c.received_at DESC LIMIT 500`,
           )
-          .bind(...s.args)
+          .bind(...metrics.args)
           .all();
         return json({
+          scope: metrics.label,
           rows: rows.results,
           as_of: now(),
           limited: rows.results.length === 500,

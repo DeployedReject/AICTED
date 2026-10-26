@@ -16,6 +16,7 @@ export default function CreateAccount({
   onSaved: () => void;
 }) {
   const [bureau, setBureau] = useState(""),
+    [role, setRole] = useState("official"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -36,14 +37,14 @@ export default function CreateAccount({
   }
   return (
     <section className="ws-card ws-admin-form">
-      <h2>Account</h2>
+      <h2>Create account</h2>
       <form onSubmit={submit}>
         <label>
-          ID
+          Official ID
           <input name="id" required maxLength={80} />
         </label>
         <label>
-          Name
+          Full name
           <input name="name" required maxLength={120} />
         </label>
         <label>
@@ -60,8 +61,6 @@ export default function CreateAccount({
           />
           <datalist id="designation-list">
             {[
-              "Chairman",
-              "Vice Chairman",
               "Member Secretary",
               "Adviser-I",
               "Adviser-II",
@@ -97,15 +96,37 @@ export default function CreateAccount({
         </label>
         <label>
           Role
-          <select name="role">
+          <select
+            name="role"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+          >
             <option value="official">Official</option>
             <option value="manager">Manager</option>
             <option value="it">IT</option>
           </select>
         </label>
+        <label title="Personal covers assigned work. Team includes the reporting tree. Bureau Head / Cell In-charge covers the full assigned bureau.">
+          Report access
+          <select
+            name="report_scope"
+            key={role}
+            defaultValue={role === "manager" ? "team" : "personal"}
+            disabled={role !== "manager"}
+          >
+            {role !== "manager" ? (
+              <option value="personal">Personal workload</option>
+            ) : (
+              <>
+                <option value="team">Reporting team</option>
+                <option value="bureau">Bureau Head / Cell In-charge</option>
+              </>
+            )}
+          </select>
+        </label>
         <OfficialPicker
           name="manager_id"
-          label="Manager"
+          label="Reporting manager"
           officials={officials}
           role="manager"
           bureau={bureau}

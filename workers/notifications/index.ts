@@ -1,3 +1,4 @@
+import { applicationEnv } from "../database/client";
 import type { Env } from "../shared";
 import type { Official } from "../../packages/shared/types";
 import { actor, body, fail, guard, json, now, userColumns } from "../shared";
@@ -17,9 +18,10 @@ async function send(
   if (!to || !from) fail(400, "Sender and recipient addresses are required.");
   const key = await getSecret(env, 0, `email_${cfg.provider}`);
   if (!key) fail(503, "The email provider key is not configured.");
-  const quota = await env.DB.prepare(
-    "INSERT INTO mail_daily(day,attempts) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1 WHERE attempts<?",
-  )
+  const quota = await (env.CONTROL_DB || env.DB)
+    .prepare(
+      "INSERT INTO mail_daily(day,attempts) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1 WHERE attempts<?",
+    )
     .bind(now().slice(0, 10), cfg.daily_email_limit)
     .run();
   if (!quota.meta.changes) fail(429, "The daily email limit has been reached.");
@@ -113,6 +115,7 @@ async function processOutbox(env: Env) {
 }
 export default {
   fetch(request: Request, env: Env) {
+    env = applicationEnv(env, request.headers.get("x-db-generation"));
     return guard(async () => {
       const user = actor(request, env);
       if (user.is_demo)
@@ -122,14 +125,17 @@ export default {
         cfg = await runtime(env, 0);
       if (path === "/recovery") {
         if (!cfg.recovery_enabled) fail(503, "Recovery email is disabled.");
-        const recipient = await env.DB.prepare(
-          "SELECT email FROM officials WHERE id=? AND is_demo=0 AND active=1",
+        const recipient = await (
+          user.role === "it" ? env.CONTROL_DB || env.DB : env.DB
         )
+          .prepare(
+            "SELECT email FROM officials WHERE id=? AND is_demo=0 AND active=1",
+          )
           .bind(user.id)
           .first<{ email: string }>();
         if (!recipient?.email) fail(400, "Account email unavailable.");
         const token = String(input.token || "");
-        if (!/^[a-f0-9-]{64,100}$/i.test(token))
+        if (!/^(?:it\.)?[a-f0-9-]{64,100}$/i.test(token))
           fail(400, "Invalid recovery token.");
         const url = new URL("/reset", cfg.public_url);
         url.searchParams.set("token", token);
@@ -146,9 +152,12 @@ export default {
       }
       if (path === "/verification") {
         if (user.role !== "it") fail(403, "IT access required.");
-        const recipient = await env.DB.prepare(
-          "SELECT email FROM officials WHERE id=? AND is_demo=0 AND active=1",
+        const recipient = await (
+          user.role === "it" ? env.CONTROL_DB || env.DB : env.DB
         )
+          .prepare(
+            "SELECT email FROM officials WHERE id=? AND is_demo=0 AND active=1",
+          )
           .bind(user.id)
           .first<{ email: string }>();
         if (!recipient?.email) fail(400, "Add your account email first.");
@@ -179,6 +188,7 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ) {
+    env = applicationEnv(env);
     ctx.waitUntil(
       (async () => {
         const cfg = await runtime(env, 0);

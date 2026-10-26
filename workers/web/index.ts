@@ -1,3 +1,5 @@
+import { designationMatches } from "../../packages/shared/designations";
+import { applicationEnv } from "../database/client";
 import type { Env } from "../shared";
 import { body, fail, guard, json, userColumns } from "../shared";
 import type { Official } from "../../packages/shared/types";
@@ -12,6 +14,7 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    env = applicationEnv(env);
     const url = new URL(request.url);
     const protectedPage = /^\/(?:workspace|it\/workspace)(?:\/|$)/.test(
       url.pathname,
@@ -54,7 +57,11 @@ export default {
         request.headers.get("origin") !== url.origin
       )
         fail(403, "Request origin is not allowed.");
-      const publicAction = await identity(request, env);
+      const fixed = { ...env, DB: env.CONTROL_DB || env.DB };
+      const publicAction = await identity(
+        request,
+        url.pathname.startsWith("/api/auth/setup") ? fixed : env,
+      );
       if (publicAction) return publicAction;
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
         if (
@@ -80,9 +87,11 @@ export default {
               ? "Enter your ID and password."
               : "Enter your ID, designation and password.",
           );
-        const user = await env.DB.prepare(
-          `SELECT ${userColumns},password_hash,password_salt FROM officials WHERE id=? AND active=1`,
-        )
+        const loginDb = portal === "it" ? fixed.DB : env.DB;
+        const user = await loginDb
+          .prepare(
+            `SELECT ${userColumns},password_hash,password_salt FROM officials WHERE id=? AND active=1`,
+          )
           .bind(input.id.trim())
           .first<Official & { password_hash: string; password_salt: string }>();
         const expected = user?.password_hash;
@@ -95,8 +104,7 @@ export default {
           !expected ||
           expected !== actual ||
           (portal === "official" &&
-            user.designation.toLowerCase() !==
-              String(input.designation).toLowerCase())
+            !designationMatches(user.designation, String(input.designation)))
         )
           fail(
             401,
@@ -114,23 +122,32 @@ export default {
           fail(403, "Use the IT sign-in.");
         let sessionId = user.id;
         if (portal === "it" && user.id === "0000" && user.is_demo === 1) {
-          const demoIT = await env.DB.prepare(
-            "SELECT id FROM officials WHERE id='DEMO-IT' AND role='it' AND is_demo=1 AND active=1",
-          ).first<{ id: string }>();
+          const demoIT = await loginDb
+            .prepare(
+              "SELECT id FROM officials WHERE id='DEMO-IT' AND role='it' AND is_demo=1 AND active=1",
+            )
+            .first<{ id: string }>();
           if (!demoIT) fail(403, "The demo IT account is unavailable.");
           sessionId = demoIT.id;
         }
-        const token = crypto.randomUUID() + crypto.randomUUID();
-        const cfg = await runtime(env, user.is_demo);
+        const token =
+          (portal === "it" ? "it." : "") +
+          crypto.randomUUID() +
+          crypto.randomUUID();
+        const cfg = await runtime(portal === "it" ? fixed : env, user.is_demo);
         const seconds = cfg.session_hours * 3600;
         const expires = Math.floor(Date.now() / 1000) + seconds;
-        await env.DB.batch([
-          env.DB.prepare(
-            "DELETE FROM sessions WHERE official_id=? AND expires_at<?",
-          ).bind(user.id, Math.floor(Date.now() / 1000)),
-          env.DB.prepare(
-            "INSERT INTO sessions(token_hash,official_id,expires_at,portal) VALUES(?,?,?,?)",
-          ).bind(await sha(token), sessionId, expires, portal),
+        await loginDb.batch([
+          loginDb
+            .prepare(
+              "DELETE FROM sessions WHERE official_id=? AND expires_at<?",
+            )
+            .bind(user.id, Math.floor(Date.now() / 1000)),
+          loginDb
+            .prepare(
+              "INSERT INTO sessions(token_hash,official_id,expires_at,portal) VALUES(?,?,?,?)",
+            )
+            .bind(await sha(token), sessionId, expires, portal),
         ]);
         const { password_hash: _hash, password_salt: _salt, ...safe } = user;
         return new Response(JSON.stringify({ user: safe }), {
@@ -149,7 +166,8 @@ export default {
           .find((p) => p.startsWith("aicted_session="))
           ?.slice(15);
         if (token)
-          await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?")
+          await (token.startsWith("it.") ? fixed.DB : env.DB)
+            .prepare("DELETE FROM sessions WHERE token_hash=?")
             .bind(await sha(token))
             .run();
         return new Response("{}", {
@@ -162,6 +180,21 @@ export default {
       }
       let user = await session(request, env);
 
+      if (url.pathname === "/api/database") {
+        if (user.role !== "it") fail(403, "IT access is required.");
+        if (!env.DATABASE) fail(503, "Database routing is not configured.");
+        const headers = new Headers(request.headers);
+        headers.delete("cookie");
+        headers.set("x-internal-secret", env.INTERNAL_SECRET);
+        headers.set("x-actor", JSON.stringify(user));
+        return env.DATABASE.fetch(
+          new Request("https://database/manage", {
+            method: request.method,
+            headers,
+            body: request.method === "GET" ? undefined : request.body,
+          }),
+        );
+      }
       const sessionUserId = user.id;
       if (url.pathname === "/api/auth/me") return json({ user });
       if (
@@ -175,6 +208,9 @@ export default {
       headers.delete("x-demo-actor");
       headers.set("x-internal-secret", env.INTERNAL_SECRET);
       headers.set("x-actor", JSON.stringify(user));
+      headers.delete("x-db-generation");
+      if (env.DB_GENERATION?.value)
+        headers.set("x-db-generation", env.DB_GENERATION.value);
       const response = await env.CASEWORK.fetch(
         new Request(request, { headers }),
       );
@@ -191,6 +227,9 @@ export default {
               headers: {
                 "x-internal-secret": env.INTERNAL_SECRET,
                 "x-actor": JSON.stringify(user),
+                ...(env.DB_GENERATION?.value
+                  ? { "x-db-generation": env.DB_GENERATION.value }
+                  : {}),
                 "Content-Type": "application/json",
               },
               body: "{}",

@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "npm run db:local && concurrently -k -n api,web \"npm run dev:api\" \"npm run dev:web\"",
     "dev:web": "vite --host 127.0.0.1",
-    "dev:api": "wrangler dev --config wrangler.jsonc --config workers/casework/wrangler.jsonc --config workers/relevance/wrangler.jsonc --config workers/notifications/wrangler.jsonc --port 8787 --persist-to .wrangler/state",
+    "dev:api": "wrangler dev --config wrangler.jsonc --config workers/casework/wrangler.jsonc --config workers/relevance/wrangler.jsonc --config workers/notifications/wrangler.jsonc --config workers/database/wrangler.jsonc --port 8787 --persist-to .wrangler/state",
     "db:local": "wrangler d1 migrations apply DB --local --persist-to .wrangler/state",
     "build": "tsc -b && tsc -p workers/tsconfig.json && vite build",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "postgres": "^3.4.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

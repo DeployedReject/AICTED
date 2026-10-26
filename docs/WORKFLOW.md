@@ -2,8 +2,7 @@
 
 Status: the core workspace and D1 permission model are implemented. Production
 authority mappings still need verified office orders; demo identities are fictional.
-Email delivery, institutional self-service intake, delegated approvers with effective
-dates, and automatic reminder delivery remain future extensions.
+Institutional self-service intake and delegated approvers with effective dates remain future extensions. Email delivery and reminders are configurable through IT.
 
 ## Navigation
 
@@ -82,3 +81,17 @@ https://fliphtml5.com/jfjx/nawh/APH-2024-27/85/
 A complete current delegation/reporting chart has not been verified. The app's
 manager/intake workflow is a product proposal. Production approval mappings need
 the applicable office orders, effective dates, and named authorised officials.
+
+## Report and IT scopes
+
+The report dataset is separate from the case-access dataset. Ordinary officials
+measure assigned cases; managers measure their reporting tree. A manager explicitly
+marked as Bureau Head / Cell In-charge receives bureau-wide aggregates. This does
+not automatically grant every case detail or any cross-bureau approval powers.
+Chairman and Vice Chairman are outside this portal’s selectable sign-in titles.
+
+IT maintains identities, reporting lines, report access, institution master records,
+bureau labels, delivery credentials and server settings through guided forms. Its
+recovery sign-in stays on the original D1. Live database switching is coordinated
+by a private database Worker and a serialized Durable Object; prepared destinations
+and copied destinations both require explicit activation. See the in-app guide.

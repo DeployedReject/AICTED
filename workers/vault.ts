@@ -38,9 +38,8 @@ export async function unseal(env: Env, value: string, context: string) {
   );
 }
 export async function getSecret(env: Env, demo: number, name: string) {
-  const row = await env.DB.prepare(
-    "SELECT ciphertext FROM secret_store WHERE is_demo=? AND name=?",
-  )
+  const row = await (env.CONTROL_DB || env.DB)
+    .prepare("SELECT ciphertext FROM secret_store WHERE is_demo=? AND name=?")
     .bind(demo, name)
     .first<{ ciphertext: string }>();
   return row ? unseal(env, row.ciphertext, `${demo}:${name}`) : null;

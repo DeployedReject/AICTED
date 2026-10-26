@@ -1,6 +1,6 @@
 # AICTED
 
-React / TypeScript complaint workspace backed by Cloudflare D1 and three focused Workers.
+React / TypeScript complaint workspace backed by Cloudflare D1/PostgreSQL and focused Cloudflare Workers.
 
 ## Run locally
 
@@ -12,13 +12,13 @@ npm run dev
 ```
 
 Vite serves the frontend on port 5173 (or the next available port) and proxies
-`/api` to the local Worker on 8787. All three Workers run together with local D1.
+`/api` to the local Worker on 8787. The web, casework, relevance, notification and database Workers run together.
 `npm run dev` applies local migrations. This checkout already has local secrets
 and demo records. No remote database is used by local development.
 
 For a fresh checkout, create the same random `INTERNAL_SECRET` in `.dev.vars`,
 `workers/casework/.dev.vars`, and `workers/relevance/.dev.vars`. These files are
-ignored. Demo seeds and provisioning tools are deliberately local and ignored;
+ignored. Demo seeds (including `seed/separate-test-logins.sql`) and provisioning tools are deliberately local and ignored;
 obtain them from the project maintainer if you need another development database.
 Never copy production records into the public demo dataset.
 
@@ -31,8 +31,13 @@ This checks both frontend and Worker TypeScript and produces the static `dist/`.
 
 ## Test login
 
-Select **Test** and enter ID **0000**,
-password **111111**. These credentials authenticate only the demo dataset.
+| Test designation | ID | Password |
+| --- | --- | --- |
+| Test Official | 0000 | 111111 |
+| Test Manager | 0001 | 111111 |
+
+These fixed identities authenticate only the demo dataset. The manager has a
+reporting team, review queues and team workload; the official has personal assignments.
 Other demo officials have no passwords and cannot log in directly. There is no
 impersonation or workspace identity switch. IT is separated at `/it`, reached by
 the footer link, and uses ID 0000 / password 111111 for its isolated demo.
@@ -60,8 +65,8 @@ limits prevent unbounded storage growth. Changes persist and are visible to othe
   Officials and managers use their own workspace; managers have a Team sidebar entry.
 - Searchable official/manager fields use loaded results, a 500ms debounce, bounded
   full-text directory searches and five-minute browser caches. No polling.
-- Database configuration shows the active D1 name/SQLite type and allows preparation
-  of another D1 source or PostgreSQL profile. Saving does not switch the live backend.
+- Database configuration shows the active name/type and allows configuration
+  of another D1 or PostgreSQL connection, with schema setup, connection checks, data transfer and activation.
   The help tooltip links to `/postgres-spec.html` and downloadable target SQL.
 - Private English embedding suggestions for production officials, optional translation
   to English first, seven-day cache and ten uncached requests per official/day.
@@ -73,22 +78,10 @@ orders. The ignored `scripts/provision-official.py` prepares password-hashed SQL
 for review, including the initial IT account. No production identities are invented.
 Email recovery delivery and institution self-service accounts are not enabled;
 the UI explains this. Contact email settings alone do not activate a mail provider.
-D1 remains the active database. Switching a source requires verified data, bindings
-and an adapter; the configuration form prepares a destination only.
-
-## Presentation
-
-Local Adwaita Sans supports forms/tables, Liberation Serif headings and Adwaita Mono
-IDs/timestamps. Font licences are bundled in `public/fonts`. Theme selection runs
-before React and the application stylesheet, avoiding a light first paint in dark mode.
-The login and workspace use the same theme toggle.
-
-Login spacing and sidebar density scale fluidly with available width/height; the
-footer intentionally follows the login viewport. Sidebar selection slides between
-items. Content transitions erase/redraw, and component data appears after a minimum
-one-second rectangular placeholder without adding API calls. Reduced-motion users
-skip these delays and animations. Reports include SVG intake, status, Bureau, ageing
-and regional charts based on the existing scoped report response.
+The application starts on `aicted-workspace`. IT can configure and activate another
+D1 database or a public TLS PostgreSQL 16+ connection through Database settings.
+See the on-site Setup guide and `/postgres-spec.html`. A saved connection is inactive
+until explicitly activated. The original D1 remains the control/recovery store.
 
 ## Cloudflare architecture and deployment
 
@@ -97,8 +90,10 @@ and regional charts based on the existing scoped report response.
 | `aicted`           | React assets, sessions, same-origin API entry, rate limits | Public               |
 | `aicted-casework`  | Scoped D1 cases, sharing, messages and IT operations       | Service binding only |
 | `aicted-relevance` | Translation and embedding inference                        | Service binding only |
+| `aicted-notifications` | Recovery mail, case updates and scheduled reminders | Service binding only |
+| `aicted-database` | Database adapters, serialized routing and verified transfers | Service binding + one SQLite Durable Object |
 
-All three use the same `INTERNAL_SECRET`, stored as a Cloudflare secret; never
+All private calls use the same `INTERNAL_SECRET`, stored as a Cloudflare secret; never
 use a `VITE_` variable for it. Secrets are not committed. Private Workers have
 `workers_dev` and preview URLs disabled. Public requests cannot pass their own actor
 or internal secret through the web Worker. Sessions are opaque hashed tokens,
@@ -110,6 +105,8 @@ Dedicated database: `aicted-workspace`. Migrations are versioned under
 ```sh
 wrangler d1 migrations apply DB --remote
 wrangler deploy --config workers/relevance/wrangler.jsonc
+wrangler deploy --config workers/database/wrangler.jsonc
+wrangler deploy --config workers/notifications/wrangler.jsonc
 wrangler deploy --config workers/casework/wrangler.jsonc
 npm run build
 wrangler deploy
@@ -126,7 +123,7 @@ in `_redirects`; it creates a redirect loop with Workers static asset routing.
 
 ## Query budget and verification
 
-No polling. Search requests are debounced; case pages contain at most 25 records,
+No background polling during normal use. Database transfer status refreshes every five seconds only while a job is active. Search requests are debounced; case pages contain at most 25 records,
 institution results 30, directory 100, recent case events 60, messages 50, and reports 500. Mutations use D1 batches where history/access must change together. Indexed
 assignment, institution, team, grants and event lookups reduce scans. Larger production
 directories, report exports and complete event archives will need additional paging.
@@ -154,8 +151,7 @@ without decrypting/re-encrypting stored secrets first.
 
 The private `aicted-notifications` Worker handles recovery and queued case updates;
 a 15-minute cron schedules bounded reminders. Accepted means accepted by the email
-provider, not guaranteed inbox delivery. PostgreSQL/D1 source settings remain migration
-preparation; saving them does not switch the live database.
+provider, not guaranteed inbox delivery. Database connections support real activation; saving alone does not switch traffic.
 
 Official autocomplete uses two-character minimum, 500 ms debounce, five-minute
 bounded client cache, concurrent-request deduplication, and indexed FTS results limited
@@ -165,3 +161,35 @@ The login map remains entirely local SVG/vector data, hidden on phones, with red
 motion support. The new AICTE mark is a transparent minimalist SVG adaptation.
 Asset sources and licences: [docs/ASSETS.md](docs/ASSETS.md).
 Workflow authority assumptions: [docs/WORKFLOW.md](docs/WORKFLOW.md).
+
+## Live database switching
+
+The database Worker owns a singleton SQLite-backed Durable Object. Active routing
+is loaded once per object activation; application queries do not poll the D1 control
+registry. It serializes database batches and pauses application access during a
+transfer. Request generation checks prevent a request that read the old database
+from writing to the new one. Transactions use native D1 batches or PostgreSQL
+transactions; values remain bound parameters. Alternate D1 databases use scoped
+Cloudflare API credentials, avoiding manual Worker binding changes.
+
+Copy uses indexed keyset pages of 20 rows, resumable alarms, canonical row hashes,
+and deferred restoration of reporting managers. A destination must be initialized
+and empty (apart from reference catalogues). Failed copies leave the source active
+and allow explicit removal of only the incomplete destination application schema.
+Prepared mode uses existing destination records and requires the current IT account.
+The previous connection is retained; reverting does not merge post-switch writes.
+
+IT sessions, recovery identities, delivery settings, encrypted connection credentials
+and routing history remain in the original D1. Retain its binding and CONFIG_KEY.
+The demo IT login cannot alter real connections or inspect production connection
+metadata. Test accounts cannot consume inference or email delivery.
+
+Officials’ reports measure their own assigned cases. Managers’ reports measure their
+reporting team. IT can explicitly grant bureau-wide reports to a Bureau Head / Cell
+In-charge. Designations never automatically grant access. Shared case access and
+personal submissions are not silently counted as another official’s workload.
+
+Current validation: TypeScript and production build only. Browser/API tests and live
+switch exercises are left to the owner. No destination database was activated as
+part of deployment. Server-maintained schemas live in `workers/database/schema.ts`;
+the corresponding PostgreSQL download is `public/postgres/schema.sql`.

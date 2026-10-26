@@ -72,3 +72,30 @@ export async function managerFor(
     (await teamMember(db, user, officialId))
   );
 }
+
+// Workload reports deliberately exclude case grants and unrelated submissions.
+export function reportScope(user: Official) {
+  const team = user.role === "manager";
+  const bureau = team && user.report_scope === "bureau";
+  return {
+    sql: `WITH RECURSIVE reporting(id) AS (
+   SELECT id FROM officials WHERE id=? AND is_demo=?
+   UNION SELECT o.id FROM officials o JOIN reporting t ON o.manager_id=t.id WHERE ?=1 AND o.is_demo=? AND o.bureau=?
+  ), measured(id) AS (SELECT id FROM cases WHERE is_demo=? AND (assigned_to IN(SELECT id FROM reporting) OR (?=1 AND bureau=?)))`,
+    args: [
+      user.id,
+      user.is_demo,
+      team ? 1 : 0,
+      user.is_demo,
+      user.bureau,
+      user.is_demo,
+      bureau ? 1 : 0,
+      user.bureau,
+    ],
+    label: bureau
+      ? "Bureau workload"
+      : team
+        ? "Your reporting team"
+        : "Your assigned cases",
+  };
+}

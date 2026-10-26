@@ -24,6 +24,23 @@ function Panel({
     <section className={"ws-chart " + className}>
       <header>
         <h2>{title}</h2>
+        <p>
+          {
+            (
+              {
+                "Weekly intake":
+                  "Cases received each week, including submissions awaiting review.",
+                "Case status":
+                  "Current processing status of approved cases in this report.",
+                "Bureau workload": "Active and disposed assignments, grouped by bureau.",
+                "Pending ageing":
+                  "Days since receipt for active approved cases. This measures age, not lateness.",
+                "Regional spread":
+                  "Approved cases grouped by the institution’s AICTE region.",
+              } as Record<string, string>
+            )[title]
+          }
+        </p>
       </header>
       {children}
     </section>
@@ -115,7 +132,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
     .sort((a, b) => b.count - a.count);
   return (
     <div className="ws-chart-grid">
-      <Panel title="Intake" className="ws-chart-wide">
+      <Panel title="Weekly intake" className="ws-chart-wide">
         <div className="ws-chart-summary">
           <strong>
             {hover === null
@@ -231,7 +248,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
           ))}
         </svg>
       </Panel>
-      <Panel title="Status">
+      <Panel title="Case status">
         <div className="ws-donut-wrap">
           <svg
             viewBox="0 0 220 220"
@@ -318,7 +335,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
           ))}
         </div>
       </Panel>
-      <Panel title="Bureaus">
+      <Panel title="Bureau workload">
         <div className="ws-bar-legend">
           <span>
             <i style={{ background: colours[0] }} />
@@ -368,7 +385,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
           )}
         </div>
       </Panel>
-      <Panel title="Ageing">
+      <Panel title="Pending ageing">
         <svg
           viewBox="0 0 400 240"
           className="ws-age-chart"
@@ -416,7 +433,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
         </svg>
         <span className="ws-chart-caption">Days</span>
       </Panel>
-      <Panel title="Regions" className="ws-chart-full">
+      <Panel title="Regional spread" className="ws-chart-full">
         <div className="ws-region-list">
           {regions.length ? (
             regions.map((r, i) => (

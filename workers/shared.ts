@@ -1,6 +1,9 @@
 import type { Official } from "../packages/shared/types";
 export interface Env {
   DB: D1Database;
+  CONTROL_DB?: D1Database;
+  DATABASE?: Fetcher;
+  DB_GENERATION?: { value?: string };
   INTERNAL_SECRET: string;
   CONFIG_KEY?: string;
   BOOTSTRAP_TOKEN?: string;
@@ -17,7 +20,8 @@ export interface Env {
   AUTH_LIMITER?: RateLimit;
   WRITE_LIMITER?: RateLimit;
 }
-export const userColumns = "id,name,designation,bureau,role,manager_id,is_demo";
+export const userColumns =
+  "id,name,designation,bureau,role,manager_id,is_demo,report_scope";
 export const json = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 export class HttpError extends Error {

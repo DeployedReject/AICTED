@@ -1,0 +1,4 @@
+CREATE TABLE database_profiles(id TEXT PRIMARY KEY,name TEXT NOT NULL,source TEXT NOT NULL,account_id TEXT NOT NULL DEFAULT '',database_id TEXT NOT NULL DEFAULT '',host TEXT NOT NULL DEFAULT '',port INTEGER NOT NULL DEFAULT 5432,database_name TEXT NOT NULL,username TEXT NOT NULL DEFAULT '',credential TEXT NOT NULL DEFAULT '',checked_at TEXT NOT NULL DEFAULT '',checked_ok INTEGER NOT NULL DEFAULT 0,check_message TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);
+CREATE TABLE database_route(id INTEGER PRIMARY KEY CHECK(id=1),active_id TEXT NOT NULL DEFAULT 'original',previous_id TEXT,maintenance INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
+INSERT INTO database_route(id,updated_at) VALUES(1,strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+CREATE TABLE database_control_audit(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL,action TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL);

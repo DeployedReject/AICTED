@@ -59,7 +59,11 @@ export default function ReportPeriods({ rows }: { rows: Row[] }) {
     <div className="ws-chart-grid ws-periods">
       <section className="ws-chart">
         <header>
-          <h2>Monthly</h2>
+          <h2>Monthly trends</h2>
+          <p>
+            Cases received and cases formally disposed during each calendar
+            month.
+          </p>
         </header>
         <div className="ws-bar-legend">
           <span>
@@ -82,6 +86,7 @@ export default function ReportPeriods({ rows }: { rows: Row[] }) {
                 <span
                   style={{
                     height: (m.received / max) * 100 + "%",
+                    display: m.received ? undefined : "none",
                     animationDelay: i * 60 + "ms",
                   }}
                   title={`${m.received} received`}
@@ -89,6 +94,7 @@ export default function ReportPeriods({ rows }: { rows: Row[] }) {
                 <i
                   style={{
                     height: (m.disposed / max) * 100 + "%",
+                    display: m.disposed ? undefined : "none",
                     animationDelay: i * 60 + 80 + "ms",
                   }}
                   title={`${m.disposed} disposed`}
@@ -104,7 +110,11 @@ export default function ReportPeriods({ rows }: { rows: Row[] }) {
       </section>
       <section className="ws-chart">
         <header>
-          <h2>Quarterly</h2>
+          <h2>Quarterly totals</h2>
+          <p>
+            Received and disposed counts for calendar quarters: January–March,
+            April–June, July–September and October–December.
+          </p>
         </header>
         <table>
           <thead>

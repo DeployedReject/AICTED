@@ -1,3 +1,4 @@
+import { loginDesignations } from "../packages/shared/designations";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { BrandMark, Icon } from "./Icons";
@@ -9,21 +10,7 @@ type Audience = "official" | "institution";
 type View = "login" | "recovery";
 type Dialog = "support" | "access" | "admin" | null;
 
-const designations = [
-  "Chairman",
-  "Vice Chairman",
-  "Member Secretary",
-  "Adviser-I",
-  "Adviser-II",
-  "Director",
-  "Deputy Director",
-  "Assistant Director",
-  "Regional Officer",
-  "Supporting Official",
-  "Technical Official",
-  "Other",
-  "Test",
-];
+const designations = loginDesignations;
 
 function readTheme() {
   try {

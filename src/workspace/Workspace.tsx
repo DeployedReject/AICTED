@@ -1,3 +1,6 @@
+import ManagerHome from "./ManagerHome";
+import DatabaseSettings from "./DatabaseSettings";
+import { SetupGuide } from "./ITHelp";
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type {
@@ -24,6 +27,7 @@ import caseGlyph from "../../Assets/glyphs/file-svgrepo-com.svg";
 import mailGlyph from "../../Assets/glyphs/mail-svgrepo-com.svg";
 
 type Page =
+  | "Guide"
   | "My Work"
   | "Cases"
   | "Institutions"
@@ -186,6 +190,19 @@ export default function Workspace() {
     ),
     [creating, setCreating] = useState(false);
   const { data: boot, error } = useLoad<Bootstrap>("/bootstrap", version);
+  const [homeView, setHomeView] = useState("assigned");
+  const pageLabel = (p: string) =>
+    (
+      ({
+        Server: "Server setup",
+        Accounts: "Manage accounts",
+        Bureaus: "Bureau directory",
+        Email: "Email delivery",
+        Database: "Database settings",
+        Guide: "Setup guide",
+        Team: "Team workload",
+      }) as Record<string, string>
+    )[p] || p;
   const refresh = () => setVersion((v) => v + 1);
   function setSelected(value: string | null) {
     const url = new URL(location.href);
@@ -246,6 +263,7 @@ export default function Workspace() {
                   "Institutions",
                   "Email",
                   "Database",
+                  "Guide",
                 ]
               : [
                   "My Work",
@@ -280,10 +298,12 @@ export default function Workspace() {
                 )}
               </span>
               {p === "My Work"
-                ? "Work"
+                ? user.role === "manager"
+                  ? "Team overview"
+                  : "My work"
                 : p === "Administration"
                   ? "Settings"
-                  : p}
+                  : pageLabel(p)}
             </button>
           ))}
         </SlidingNav>
@@ -310,10 +330,12 @@ export default function Workspace() {
             {selected
               ? "Case"
               : page === "My Work"
-                ? "Work"
+                ? user.role === "manager"
+                  ? "Team overview"
+                  : "My work"
                 : page === "Administration"
                   ? "Settings"
-                  : page}
+                  : pageLabel(page)}
           </span>
           <div>
             <ThemeToggle
@@ -362,10 +384,22 @@ export default function Workspace() {
                     </div>
                     <h1>
                       {page === "My Work"
-                        ? "Work"
+                        ? user.role === "manager"
+                          ? "Team overview"
+                          : "My work"
                         : page === "Administration"
                           ? "Settings"
-                          : page}
+                          : (
+                              {
+                                Server: "Server setup",
+                                Accounts: "Manage accounts",
+                                Bureaus: "Bureau directory",
+                                Email: "Email delivery",
+                                Database: "Database settings",
+                                Guide: "Setup guide",
+                                Team: "Team workload",
+                              } as Record<string, string>
+                            )[page] || page}
                     </h1>
                   </div>
                   {(page === "My Work" || page === "Cases") && (
@@ -377,7 +411,7 @@ export default function Workspace() {
                     </button>
                   )}
                 </div>
-                {page === "My Work" && (
+                {page === "My Work" && user.role === "official" && (
                   <div className="ws-attention">
                     <button onClick={() => setPage("Overlaps")}>
                       <span>Overlaps</span>
@@ -389,10 +423,10 @@ export default function Workspace() {
                     </span>
                   </div>
                 )}
-                {page === "My Work" && (
+                {page === "My Work" && user.role === "official" && (
                   <div className="ws-metrics">
                     {[
-                      ["Cases in your scope", boot.summary.total],
+                      ["Assigned cases", boot.summary.total],
                       ["In progress", boot.summary.processing],
                       ["Overdue", boot.summary.overdue],
                       ["Escalated", boot.summary.escalated],
@@ -404,9 +438,18 @@ export default function Workspace() {
                     ))}
                   </div>
                 )}
+                {page === "My Work" && user.role === "manager" && (
+                  <ManagerHome
+                    version={version}
+                    open={setSelected}
+                    review={(view) => setHomeView(view)}
+                    team={() => setPage("Team")}
+                  />
+                )}
                 {(page === "My Work" || page === "Cases") && (
                   <CaseList
-                    key={page}
+                    key={page + homeView}
+                    initialView={page === "My Work" ? homeView : undefined}
                     boot={boot}
                     version={version}
                     open={setSelected}
@@ -442,16 +485,15 @@ export default function Workspace() {
                   <Overlaps version={version} open={setSelected} />
                 )}
                 {page === "Reports" && <Reports version={version} />}
-                {isIT && (
+                {isIT && page === "Database" && <DatabaseSettings />}
+                {isIT && page === "Guide" && <SetupGuide />}
+                {isIT && page !== "Database" && page !== "Guide" && (
                   <Admin version={version} refresh={refresh} section={page} />
                 )}
               </>
             )}
           </Scene>
         </main>
-        <footer className="ws-footer">
-          © {new Date().getFullYear()} DeployedReject
-        </footer>
       </div>
     </div>
   );
@@ -536,10 +578,10 @@ function CaseList({
           >
             {
               {
-                all: "All",
-                assigned: "Assigned",
-                team: "Team",
-                proposed: "Intake",
+                all: "All cases",
+                assigned: "Assigned cases",
+                team: "Team cases",
+                proposed: "Intake review",
                 coordination: "Coordination",
               }[v]
             }
@@ -1710,6 +1752,7 @@ function Reports({ version }: { version: number }) {
     rows: ReportRow[];
     as_of: string;
     limited: boolean;
+    scope: string;
   }>("/reports", version);
   if (error) return <ErrorBox text={error} />;
   if (!data) return <Skeleton />;
@@ -1753,7 +1796,7 @@ function Reports({ version }: { version: number }) {
     <>
       <div className="ws-report-toolbar">
         <span>
-          {stamp(data.as_of)} · {data.rows.length} records
+          {data.scope} · {stamp(data.as_of)} · {data.rows.length} records
           {data.limited ? " · Partial" : ""}
         </span>
         <button onClick={download}>Export</button>
@@ -1770,11 +1813,28 @@ function Reports({ version }: { version: number }) {
           <div key={label}>
             <span>{label}</span>
             <Counter value={Number(n)} />
+            <small>
+              {
+                (
+                  {
+                    Active: "Approved cases still open.",
+                    Disposed: "Approved cases with a recorded disposal.",
+                    Overdue: "Active cases past their due date.",
+                    Transferred: "Cases with at least one recorded transfer.",
+                    Overlaps:
+                      "Active cases at institutions with work in another bureau.",
+                    Review: "Submissions awaiting an intake decision.",
+                  } as Record<string, string>
+                )[String(label)]
+              }
+            </small>
           </div>
         ))}
       </div>
       <div className="ws-report-note">
-        <span>Disposal rate</span>
+        <span title="Disposed approved cases divided by all approved cases in this report. This is a snapshot, not a monthly resolution rate.">
+          Disposal rate
+        </span>
         <b>
           {approved.length
             ? Math.round(

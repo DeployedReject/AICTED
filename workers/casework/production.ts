@@ -40,6 +40,7 @@ export async function production(
         ).bind(user.is_demo, name),
         audit(env, user, "secret_deleted", name),
       ]);
+      await mirrorConfiguration(env, user);
       return json({ ok: true });
     }
     const value = await getSecret(env, user.is_demo, name);
@@ -65,6 +66,7 @@ export async function production(
       ),
       audit(env, user, "secret_saved", name),
     ]);
+    await mirrorConfiguration(env, user);
     return json({ ok: true });
   }
   if (action === "email" || action === "server") {
@@ -181,6 +183,7 @@ export async function production(
       ),
       audit(env, user, action + "_configured", "Settings updated"),
     ]);
+    await mirrorConfiguration(env, user);
     return json({ ok: true });
   }
   if (action === "email_verification") {
@@ -207,7 +210,7 @@ export async function production(
       role = String(input.role),
       address = email(input.email, !user.is_demo);
     if (
-      accountId === "0000" ||
+      ["0000", "0001"].includes(accountId) ||
       accountId === "DEMO-IT" ||
       (!user.is_demo && accountId.startsWith("DEMO-"))
     )
@@ -222,9 +225,14 @@ export async function production(
         .first())
     )
       fail(400, "Choose an active Bureau or Cell.");
-    const managerId = input.manager_id
-      ? textField(input.manager_id, "Manager", 80)
-      : null;
+    const reportScope =
+      role === "manager" ? String(input.report_scope || "team") : "personal";
+    if (!["personal", "team", "bureau"].includes(reportScope))
+      fail(400, "Choose report access.");
+    const managerId =
+      role !== "it" && input.manager_id
+        ? textField(input.manager_id, "Manager", 80)
+        : null;
     if (
       managerId &&
       !(await env.DB.prepare(
@@ -247,7 +255,7 @@ export async function production(
       fail(409, "This ID already exists.");
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO officials(id,name,designation,bureau,role,manager_id,is_demo,email,password_salt,password_hash) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO officials(id,name,designation,bureau,role,manager_id,is_demo,email,password_salt,password_hash,report_scope) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
       ).bind(
         accountId,
         name,
@@ -259,9 +267,32 @@ export async function production(
         address,
         hash ? salt : null,
         hash,
+        reportScope,
       ),
       audit(env, user, "account_created", accountId),
     ]);
+    if (
+      role === "it" &&
+      env.CONTROL_DB &&
+      !env.DB_GENERATION?.value?.startsWith("original:")
+    ) {
+      await env.CONTROL_DB.prepare(
+        "INSERT INTO officials(id,name,designation,bureau,role,manager_id,is_demo,email,password_salt,password_hash,report_scope) VALUES(?,?,?,?,?,NULL,?,?,?,?,?)",
+      )
+        .bind(
+          accountId,
+          name,
+          designation,
+          bureau,
+          role,
+          user.is_demo,
+          address,
+          hash ? salt : null,
+          hash,
+          reportScope,
+        )
+        .run();
+    }
     return json({ ok: true }, 201);
   }
   if (action === "account_email") {
@@ -280,13 +311,19 @@ export async function production(
       ).bind(email(input.email, true), accountId, user.is_demo),
       audit(env, user, "email_updated", accountId),
     ]);
+    if (env.CONTROL_DB)
+      await env.CONTROL_DB.prepare(
+        "UPDATE officials SET email=? WHERE id=? AND role='it'",
+      )
+        .bind(email(input.email, true), accountId)
+        .run();
     return json({ ok: true });
   }
   if (action === "account_access") {
     const accountId = textField(input.official_id, "Official", 80);
     if (
       accountId === user.id ||
-      accountId === "0000" ||
+      ["0000", "0001"].includes(accountId) ||
       accountId === "DEMO-IT"
     )
       fail(400, "This account cannot be disabled here.");
@@ -311,6 +348,16 @@ export async function production(
         `${accountId}: ${active ? "enabled" : "disabled"}`,
       ),
     ]);
+    if (target.role === "it" && env.CONTROL_DB)
+      await env.CONTROL_DB.batch([
+        env.CONTROL_DB.prepare("UPDATE officials SET active=? WHERE id=?").bind(
+          active,
+          accountId,
+        ),
+        env.CONTROL_DB.prepare("DELETE FROM sessions WHERE official_id=?").bind(
+          accountId,
+        ),
+      ]);
     return json({ ok: true });
   }
   if (action === "unit") {
@@ -340,4 +387,45 @@ export async function production(
     return json({ ok: true });
   }
   return null;
+}
+
+// Retain delivery settings and IT recovery identities in the fixed control store.
+// The active application also has runtime_settings for transactional email triggers.
+async function mirrorConfiguration(env: Env, user: Official) {
+  if (
+    !env.CONTROL_DB ||
+    !env.DB_GENERATION?.value ||
+    env.DB_GENERATION.value.startsWith("original:")
+  )
+    return;
+  const [settings, secrets] = await env.DB.batch([
+    env.DB.prepare("SELECT * FROM runtime_settings WHERE is_demo=?").bind(
+      user.is_demo,
+    ),
+    env.DB.prepare("SELECT * FROM secret_store WHERE is_demo=?").bind(
+      user.is_demo,
+    ),
+  ]);
+  const statements = [
+    env.CONTROL_DB.prepare("DELETE FROM secret_store WHERE is_demo=?").bind(
+      user.is_demo,
+    ),
+  ];
+  for (const [table, rows, keys] of [
+    ["runtime_settings", settings.results, ["is_demo"]],
+    ["secret_store", secrets.results, ["is_demo", "name"]],
+  ] as const)
+    for (const unknownRow of rows) {
+      const row = unknownRow as Record<string, unknown>;
+      const columns = Object.keys(row);
+      statements.push(
+        env.CONTROL_DB.prepare(
+          `INSERT INTO ${table}(${columns.join(",")}) VALUES(${columns.map(() => "?").join(",")}) ON CONFLICT(${keys.join(",")}) DO UPDATE SET ${columns
+            .filter((c) => !(keys as readonly string[]).includes(c))
+            .map((c) => `${c}=excluded.${c}`)
+            .join(",")}`,
+        ).bind(...columns.map((c) => row[c])),
+      );
+    }
+  await env.CONTROL_DB.batch(statements);
 }

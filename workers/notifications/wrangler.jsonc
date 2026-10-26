@@ -12,5 +12,6 @@
       "migrations_dir": "../../database/migrations",
     },
   ],
+  "services": [{ "binding": "DATABASE", "service": "aicted-database" }],
   "triggers": { "crons": ["*/15 * * * *"] },
 }
