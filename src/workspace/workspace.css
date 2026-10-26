@@ -2982,3 +2982,256 @@
 .ws-folder-link {
   margin-bottom: 16px;
 }
+/* Reports share a single grid; plot space follows the tile, not a fixed SVG size. */
+.ws-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: clamp(330px, 30cqw, 380px);
+  gap: 14px;
+  align-items: stretch;
+}
+.ws-report-grid > .ws-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: clamp(14px, 1.8cqw, 22px);
+  animation: none;
+  transition: none;
+  min-width: 0;
+}
+.ws-report-grid .ws-chart:hover {
+  border-color: var(--border);
+}
+.ws-report-grid .ws-chart > header {
+  display: block;
+  margin: 0;
+}
+.ws-report-grid .ws-chart > header h2 {
+  font-size: 18px;
+}
+.ws-report-grid .ws-chart > header p {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.ws-report-grid .ws-chart-wide {
+  grid-column: span 2;
+}
+.ws-report-grid .ws-regions-tile {
+  grid-column: auto;
+}
+.ws-report-grid .ws-line-chart,
+.ws-report-grid .ws-age-chart {
+  flex: 1 1 0;
+  width: 100%;
+  height: 0;
+  min-height: 150px;
+  max-height: none;
+  margin: 0;
+  overflow: visible;
+}
+.ws-report-grid .ws-chart-summary strong {
+  font-size: 25px;
+}
+.ws-report-grid .ws-donut-wrap {
+  flex: 1;
+  position: relative;
+  min-height: 150px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+.ws-report-grid .ws-donut-wrap svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ws-report-grid .ws-chart-legend {
+  gap: 2px 14px;
+}
+.ws-report-grid .ws-chart-legend button {
+  min-height: 24px;
+  padding: 2px 0;
+}
+.ws-report-grid .ws-bar-legend {
+  margin: 0;
+  gap: 18px;
+}
+.ws-report-grid .ws-bureau-bars {
+  flex: 1;
+  align-content: space-evenly;
+  gap: 16px;
+}
+.ws-report-grid .ws-stacked-bar {
+  height: 18px;
+  gap: 0;
+}
+.ws-report-grid .ws-region-list {
+  flex: 1;
+  grid-template-columns: 1fr;
+  align-content: space-evenly;
+  gap: 14px;
+}
+.ws-report-grid .ws-region-list > div {
+  grid-template-columns: minmax(40px, auto) minmax(0, 1fr) 24px;
+  gap: 12px;
+}
+.ws-report-grid .ws-months {
+  flex: 1;
+  min-height: 180px;
+  height: auto;
+  gap: clamp(6px, 1.5cqw, 20px);
+}
+.ws-report-grid .ws-months > div {
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+.ws-report-grid .ws-months > div > div {
+  height: auto;
+  min-height: 140px;
+  gap: 6px;
+}
+.ws-report-grid .ws-months :is(span, i) {
+  width: clamp(10px, 2cqw, 24px);
+  min-height: 0;
+}
+.ws-report-grid .ws-quarterly-tile table {
+  flex: 1;
+  width: 100%;
+}
+.ws-report-grid .ws-quarterly-tile :is(th, td) {
+  padding: 10px 6px;
+}
+.ws-report-grid .ws-chart-caption {
+  margin: 0;
+}
+/* Freeze at the true starting geometry until the observer sees the tile. */
+.ws-report-grid
+  :is(
+    .ws-chart-point,
+    .ws-chart-line,
+    .ws-chart-area,
+    .ws-donut-arc,
+    .ws-age-bar,
+    .ws-stacked-bar > span,
+    .ws-region-list i,
+    .ws-months span,
+    .ws-months i,
+    .ws-quarterly-tile tbody tr
+  ) {
+  animation-fill-mode: both;
+  animation-iteration-count: 1;
+  animation-play-state: paused;
+}
+.ws-report-grid
+  .ws-chart[data-drawn="true"]
+  :is(
+    .ws-chart-point,
+    .ws-chart-line,
+    .ws-chart-area,
+    .ws-donut-arc,
+    .ws-age-bar,
+    .ws-stacked-bar > span,
+    .ws-region-list i,
+    .ws-months span,
+    .ws-months i,
+    .ws-quarterly-tile tbody tr
+  ) {
+  animation-play-state: running;
+}
+.ws-report-grid .ws-chart-line {
+  animation-name: ws-line;
+  animation-duration: 1.2s;
+  animation-delay: 0s;
+  animation-timing-function: linear;
+}
+.ws-report-grid .ws-chart-point {
+  animation-name: ws-report-ink;
+  animation-duration: 0.18s;
+}
+.ws-report-grid .ws-chart-area {
+  animation-name: ws-report-ink;
+  animation-duration: 0.4s;
+  animation-delay: 0.8s;
+}
+.ws-report-grid .ws-donut-arc {
+  animation-name: ws-report-arc;
+  animation-timing-function: linear;
+  transition: none;
+}
+.ws-report-grid :is(.ws-age-bar, .ws-months span, .ws-months i) {
+  animation-name: ws-grow-y;
+  animation-duration: 0.8s;
+  animation-timing-function: cubic-bezier(0.25, 0.65, 0.35, 1);
+}
+.ws-report-grid :is(.ws-stacked-bar > span, .ws-region-list i) {
+  animation-name: ws-grow-x;
+  animation-duration: 0.8s;
+  animation-timing-function: cubic-bezier(0.25, 0.65, 0.35, 1);
+}
+.ws-report-grid .ws-quarterly-tile tbody tr {
+  animation: ws-report-ink 0.3s both paused;
+}
+@keyframes ws-report-ink {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ws-report-arc {
+  from {
+    stroke-dasharray: 0 100;
+  }
+  to {
+    stroke-dasharray: var(--arc-length) var(--arc-gap);
+  }
+}
+@container (min-width:1100px) {
+  .ws-report-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: clamp(330px, 28cqw, 380px);
+  }
+  .ws-report-grid .ws-monthly-tile {
+    grid-column: span 2;
+  }
+}
+@container (max-width:640px) {
+  .ws-report-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: 340px;
+  }
+  .ws-report-grid > .ws-chart {
+    grid-column: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ws-report-grid .ws-chart-line {
+    stroke-dashoffset: 0;
+  }
+  .ws-report-grid .ws-donut-arc {
+    stroke-dasharray: var(--arc-length) var(--arc-gap);
+  }
+}
+
+.ws-report-grid :is(.ws-bureau-bars, .ws-region-list) {
+  min-height: 0;
+  overflow: auto;
+}
+.ws-report-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@container (min-width:1100px) {
+  .ws-report-metrics {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+@container (max-width:640px) {
+  .ws-report-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

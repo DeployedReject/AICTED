@@ -1,3 +1,4 @@
+import ReportPanel from "./ReportPanel";
 interface Row {
   received_at: string;
   disposed_at?: string | null;
@@ -56,15 +57,12 @@ export default function ReportPeriods({ rows }: { rows: Row[] }) {
     });
   const max = Math.max(1, ...months.flatMap((m) => [m.received, m.disposed]));
   return (
-    <div className="ws-chart-grid ws-periods">
-      <section className="ws-chart">
-        <header>
-          <h2>Monthly trends</h2>
-          <p>
-            Cases received and cases formally disposed during each calendar
-            month.
-          </p>
-        </header>
+    <>
+      <ReportPanel
+        title="Monthly trends"
+        description="Cases received and formally disposed during each calendar month."
+        className="ws-monthly-tile"
+      >
         <div className="ws-bar-legend">
           <span>
             <i style={{ background: "var(--blue)" }} />
@@ -107,15 +105,12 @@ export default function ReportPeriods({ rows }: { rows: Row[] }) {
             </div>
           ))}
         </div>
-      </section>
-      <section className="ws-chart">
-        <header>
-          <h2>Quarterly totals</h2>
-          <p>
-            Received and disposed counts for calendar quarters: January–March,
-            April–June, July–September and October–December.
-          </p>
-        </header>
+      </ReportPanel>
+      <ReportPanel
+        title="Quarterly totals"
+        description="Received and disposed counts for each calendar quarter."
+        className="ws-quarterly-tile"
+      >
         <table>
           <thead>
             <tr>
@@ -125,8 +120,8 @@ export default function ReportPeriods({ rows }: { rows: Row[] }) {
             </tr>
           </thead>
           <tbody>
-            {quarters.map((q) => (
-              <tr key={q.label}>
+            {quarters.map((q, i) => (
+              <tr key={q.label} style={{ animationDelay: `${i * 100}ms` }}>
                 <td>{q.label}</td>
                 <td>{q.received}</td>
                 <td>{q.disposed}</td>
@@ -134,7 +129,7 @@ export default function ReportPeriods({ rows }: { rows: Row[] }) {
             ))}
           </tbody>
         </table>
-      </section>
-    </div>
+      </ReportPanel>
+    </>
   );
 }

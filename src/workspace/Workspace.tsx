@@ -92,7 +92,10 @@ function useLoad<T>(path: string, version = 0) {
     if (path !== "/bootstrap") setData(null);
     setError("");
     const wait = new Promise((resolve) =>
-      setTimeout(resolve, reduced() || path === "/bootstrap" ? 0 : 1000),
+      setTimeout(
+        resolve,
+        reduced() || path === "/bootstrap" || path === "/reports" ? 0 : 1000,
+      ),
     );
     Promise.all([api<T>(path), wait])
       .then(([r]) => {
@@ -405,6 +408,7 @@ export default function Workspace() {
         </header>
         <main className="ws-content">
           <Scene
+            animate={page !== "Reports"}
             scene={
               selected
                 ? "case-" + selected
@@ -1906,7 +1910,7 @@ function Reports({ version }: { version: number }) {
         ].map(([label, n]) => (
           <div key={label}>
             <span>{label}</span>
-            <Counter value={Number(n)} />
+            <strong>{Number(n)}</strong>
             <small>
               {
                 (
@@ -1941,8 +1945,10 @@ function Reports({ version }: { version: number }) {
           Ageing = days since receipt
         </span>
       </div>
-      <ReportCharts rows={data.rows} />
-      <ReportPeriods rows={data.rows} />
+      <div className="ws-report-grid">
+        <ReportCharts rows={data.rows} />
+        <ReportPeriods rows={data.rows} />
+      </div>
     </>
   );
 }

@@ -5,7 +5,9 @@ export const reduced = () =>
 export function Scene({
   scene,
   children,
+  animate = true,
 }: {
+  animate?: boolean;
   scene: string;
   children: ReactNode;
 }) {
@@ -14,7 +16,7 @@ export function Scene({
   const previous = useRef(children);
   if (shown === scene) previous.current = children;
   useEffect(() => {
-    if (reduced()) {
+    if (!animate || reduced()) {
       setShown(scene);
       setPhase("steady");
       return;
@@ -29,7 +31,9 @@ export function Scene({
       setPhase("draw");
     }, 280);
     return () => clearTimeout(t);
-  }, [scene, shown]);
+  }, [scene, shown, animate]);
+  if (!animate)
+    return <div className="ws-scene ws-report-scene">{children}</div>;
   return (
     <div className="ws-scene" data-phase={phase} aria-busy={phase === "erase"}>
       <div className="ws-scene-content" key={shown}>

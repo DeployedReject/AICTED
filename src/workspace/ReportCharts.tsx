@@ -1,4 +1,5 @@
-import { useId, useState } from "react";
+import ReportPanel, { usePlotSize } from "./ReportPanel";
+import { useId, useState, type CSSProperties } from "react";
 import { bureauName } from "../../packages/shared/catalog";
 interface Row {
   bureau: string;
@@ -20,39 +21,42 @@ function Panel({
   children: React.ReactNode;
   className?: string;
 }) {
+  const descriptions: Record<string, string> = {
+    "Weekly intake":
+      "Cases received each week, including submissions awaiting review.",
+    "Case status":
+      "Current processing status of approved cases in this report.",
+    "Bureau workload": "Active and disposed assignments, grouped by bureau.",
+    "Pending ageing":
+      "Days since receipt for active approved cases; this measures age, not lateness.",
+    "Regional spread":
+      "Approved cases grouped by the institution’s AICTE region.",
+  };
   return (
-    <section className={"ws-chart " + className}>
-      <header>
-        <h2>{title}</h2>
-        <p>
-          {
-            (
-              {
-                "Weekly intake":
-                  "Cases received each week, including submissions awaiting review.",
-                "Case status":
-                  "Current processing status of approved cases in this report.",
-                "Bureau workload":
-                  "Active and disposed assignments, grouped by bureau.",
-                "Pending ageing":
-                  "Days since receipt for active approved cases. This measures age, not lateness.",
-                "Regional spread":
-                  "Approved cases grouped by the institution’s AICTE region.",
-              } as Record<string, string>
-            )[title]
-          }
-        </p>
-      </header>
+    <ReportPanel
+      title={title}
+      description={descriptions[title]}
+      className={className}
+    >
       {children}
-    </section>
+    </ReportPanel>
   );
 }
+
 export default function ReportCharts({ rows }: { rows: Row[] }) {
   const approved = rows.filter((r) => r.intake === "Approved"),
     active = approved.filter((r) => r.status !== "Disposed");
   const [hover, setHover] = useState<number | null>(null),
     [segment, setSegment] = useState<number | null>(null);
   const graphId = useId();
+  const plot = usePlotSize(680, 240),
+    agePlot = usePlotSize(400, 240);
+  const right = plot.width - 20,
+    bottom = plot.height - 30,
+    plotHeight = plot.height - 56;
+  const ageBottom = agePlot.height - 28,
+    ageHeight = agePlot.height - 56,
+    ageStep = (agePlot.width - 32) / 4;
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   today.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
@@ -74,8 +78,8 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
   });
   const max = Math.max(4, ...weeks.map((w) => w.count)),
     points = weeks.map((w, i) => ({
-      x: 48 + i * (590 / 7),
-      y: 218 - (w.count / max) * 170,
+      x: 36 + i * ((right - 36) / 7),
+      y: bottom - (w.count / max) * plotHeight,
       ...w,
     }));
   const line = points
@@ -132,7 +136,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
     }))
     .sort((a, b) => b.count - a.count);
   return (
-    <div className="ws-chart-grid">
+    <>
       <Panel title="Weekly intake" className="ws-chart-wide">
         <div className="ws-chart-summary">
           <strong>
@@ -145,7 +149,8 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
         </div>
         <svg
           className="ws-line-chart"
-          viewBox="0 0 680 270"
+          ref={plot.ref}
+          viewBox={`0 0 ${plot.width} ${plot.height}`}
           role="img"
           aria-label="Cases received each week over the last eight weeks"
         >
@@ -160,25 +165,25 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
             </pattern>
           </defs>
           {[0, 1, 2, 3, 4].map((i) => (
-            <g
-              key={i}
-              className="ws-chart-point"
-              style={{ animationDelay: `${0.2 + i * 0.08}s` }}
-            >
+            <g key={i}>
               <line
-                x1="48"
-                x2="638"
-                y1={218 - i * 42.5}
-                y2={218 - i * 42.5}
+                x1="36"
+                x2={right}
+                y1={bottom - (i * plotHeight) / 4}
+                y2={bottom - (i * plotHeight) / 4}
                 className="ws-chart-gridline"
               />
-              <text x="30" y={222 - i * 42.5} textAnchor="end">
+              <text
+                x="25"
+                y={bottom + 4 - (i * plotHeight) / 4}
+                textAnchor="end"
+              >
                 {Math.round((max * i) / 4)}
               </text>
             </g>
           ))}
           <path
-            d={line + " L638,218 L48,218 Z"}
+            d={line + ` L${right},${bottom} L36,${bottom} Z`}
             fill={`url(#${graphId})`}
             className="ws-chart-area"
           />
@@ -192,17 +197,13 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
             pathLength="1"
             className="ws-chart-line"
           />
-          <circle className="ws-chart-tracer" r="4" fill="var(--blue)">
-            <animateMotion
-              path={line}
-              dur="4s"
-              begin="1.5s"
-              repeatCount="indefinite"
-            />
-          </circle>
           {points.map((p, i) => (
-            <g key={i}>
-              <text x={p.x} y="248" textAnchor="middle">
+            <g
+              key={i}
+              className="ws-chart-point"
+              style={{ animationDelay: `${i * 140}ms` }}
+            >
+              <text x={p.x} y={plot.height - 8} textAnchor="middle">
                 {p.label}
               </text>
               <circle
@@ -214,10 +215,10 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
                 strokeWidth="2"
               />
               <rect
-                x={p.x - 35}
-                y="38"
-                width="70"
-                height="185"
+                x={p.x - (right - 36) / 14}
+                y="14"
+                width={(right - 36) / 7}
+                height={bottom - 14}
                 fill="transparent"
                 tabIndex={0}
                 aria-label={`${p.label}: ${p.count} received`}
@@ -235,12 +236,12 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
                   <line
                     x1={p.x}
                     x2={p.x}
-                    y1="40"
-                    y2="218"
+                    y1="14"
+                    y2={bottom}
                     className="ws-chart-guide"
                   />
                   <rect
-                    x={Math.min(600, Math.max(48, p.x - 24))}
+                    x={Math.min(right - 48, Math.max(36, p.x - 24))}
                     y={Math.max(10, p.y - 35)}
                     width="48"
                     height="25"
@@ -248,7 +249,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
                     rx="2"
                   />
                   <text
-                    x={Math.min(600, Math.max(48, p.x - 24)) + 24}
+                    x={Math.min(right - 48, Math.max(36, p.x - 24)) + 24}
                     y={Math.max(10, p.y - 35) + 17}
                     textAnchor="middle"
                     className="ws-chart-tooltip"
@@ -261,10 +262,10 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
           ))}
         </svg>
       </Panel>
-      <Panel title="Case status">
+      <Panel title="Case status" className="ws-status-tile">
         <div className="ws-donut-wrap">
           <svg
-            viewBox="0 0 220 220"
+            viewBox="18 18 184 184"
             role="img"
             aria-label="Case status distribution"
           >
@@ -294,6 +295,14 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
                     strokeDashoffset={-a.offset}
                     transform="rotate(-90 110 110)"
                     className="ws-donut-arc"
+                    style={
+                      {
+                        "--arc-length": Math.max(0, a.length - 1),
+                        "--arc-gap": 100 - Math.max(0, a.length - 1),
+                        animationDuration: `${a.length * 12}ms`,
+                        animationDelay: `${a.offset * 12}ms`,
+                      } as CSSProperties
+                    }
                     tabIndex={0}
                     onMouseEnter={() => setSegment(i)}
                     onMouseLeave={() => setSegment(null)}
@@ -400,27 +409,28 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
       </Panel>
       <Panel title="Pending ageing">
         <svg
-          viewBox="0 0 400 240"
+          ref={agePlot.ref}
+          viewBox={`0 0 ${agePlot.width} ${agePlot.height}`}
           className="ws-age-chart"
           role="img"
           aria-label="Age of active cases in days"
         >
           <line
             x1="24"
-            x2="380"
-            y1="190"
-            y2="190"
+            x2={agePlot.width - 8}
+            y1={ageBottom}
+            y2={ageBottom}
             className="ws-chart-gridline"
           />
           {ages.map((a, i) => {
-            const height = (a.count / maxAge) * 135;
+            const height = (a.count / maxAge) * ageHeight;
             return (
               <g key={a.label}>
                 <rect
-                  x={45 + i * 90}
-                  y={190 - height}
-                  width="45"
-                  height={height || 2}
+                  x={16 + i * ageStep + ageStep * 0.2}
+                  y={ageBottom - height}
+                  width={ageStep * 0.6}
+                  height={height}
                   fill={i > 1 ? colours[1] : colours[0]}
                   className="ws-age-bar"
                   style={{ animationDelay: i * 100 + "ms" }}
@@ -430,14 +440,18 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
                   </title>
                 </rect>
                 <text
-                  x={67.5 + i * 90}
-                  y={175 - height}
+                  x={16 + (i + 0.5) * ageStep}
+                  y={ageBottom - 8 - height}
                   textAnchor="middle"
                   className="ws-age-value"
                 >
                   {a.count}
                 </text>
-                <text x={67.5 + i * 90} y="215" textAnchor="middle">
+                <text
+                  x={16 + (i + 0.5) * ageStep}
+                  y={agePlot.height - 7}
+                  textAnchor="middle"
+                >
                   {a.label}
                 </text>
               </g>
@@ -446,7 +460,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
         </svg>
         <span className="ws-chart-caption">Days</span>
       </Panel>
-      <Panel title="Regional spread" className="ws-chart-full">
+      <Panel title="Regional spread" className="ws-regions-tile">
         <div className="ws-region-list">
           {regions.length ? (
             regions.map((r, i) => (
@@ -468,6 +482,6 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
           )}
         </div>
       </Panel>
-    </div>
+    </>
   );
 }
