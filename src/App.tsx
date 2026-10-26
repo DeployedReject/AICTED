@@ -178,9 +178,6 @@ export default function App() {
         <div className="login-main" id="login-content">
           <div className="form-container">
             <div className="intro">
-              <span className="portal-section-label">
-                {isIT ? "Administration Panel" : "Main Login Portal"}
-              </span>
               <h1 tabIndex={-1} ref={title}>
                 {view === "login" ? "Sign in" : "Recovery"}
               </h1>
@@ -432,7 +429,7 @@ export default function App() {
             Local vectors · ODbL
           </a>
         </span>
-        <a className="admin-link portal-entry-label" href={isIT ? "/" : "/it"}>
+        <a className="admin-link" href={isIT ? "/" : "/it"}>
           {isIT ? "Main Login Portal" : "Administration Panel"}
           <Icon name="arrow" size={13} />
         </a>

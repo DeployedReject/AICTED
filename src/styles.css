@@ -1136,7 +1136,8 @@ body {
   font-size: clamp(8px, 1.25cqh, 10px);
 }
 .intro h1 {
-  font-size: clamp(22px, 3.6cqh, 28px);
+  font-size: clamp(30px, 4.8cqh, 38px);
+  font-weight: 500;
   margin: 0;
   line-height: 1.15;
 }
@@ -1150,10 +1151,10 @@ body {
   font-size: 12px;
 }
 .login-form {
-  gap: clamp(8px, 1.9cqh, 16px);
+  gap: clamp(10px, 2.1cqh, 18px);
 }
 .field {
-  gap: clamp(4px, 0.8cqh, 7px);
+  gap: clamp(5px, 0.9cqh, 8px);
 }
 .field label {
   font-size: 11px;
@@ -1312,19 +1313,9 @@ body {
   grid-row: 2;
   align-self: start;
 }
-.portal-section-label,
-.portal-entry-label {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--orange) 7%, var(--surface));
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  font-size: 12px;
+/* Keep the heading distinct without spreading the compact form apart. */
+.intro + #account-form,
+.intro + .recovery-form {
+  margin-top: clamp(16px, 2.8cqh, 24px);
 }
-.portal-section-label {
-  margin-bottom: 12px;
-}
+
