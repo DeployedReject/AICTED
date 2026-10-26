@@ -17,17 +17,20 @@ npm run build
 npm run preview
 ```
 
-## Cloudflare Pages
+## Cloudflare Workers deployment
 
-For the existing Git-connected Pages project:
+For the existing Git-connected Cloudflare project:
 
 - Framework: React / Vite
 - Build command: `npm run build`
+- Deploy command: `npx wrangler deploy`
 - Output directory: `dist`
 - Root directory: repository root
 
-The `_headers` and `_redirects` files are copied into the build automatically.
-No database bindings or Workers are needed for this scene.
+`wrangler.jsonc` configures the `aicted` Worker to serve `dist` with native SPA
+fallback. Do not add a catch-all `_redirects` rule: it conflicts with Workers'
+static asset routing. The `_headers` file is copied into the build automatically.
+No backend Worker code or database bindings are needed for this scene.
 
 ## Current scope
 
