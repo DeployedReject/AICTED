@@ -16,9 +16,8 @@ export default {
   ): Promise<Response> {
     env = applicationEnv(env);
     const url = new URL(request.url);
-    const protectedPage = /^\/(?:workspace|it\/workspace)(?:\/|$)/.test(
-      url.pathname,
-    );
+    const protectedPage =
+      /^\/(?:workspace|it\/(?:workspace|setup))(?:\/|$)/.test(url.pathname);
     if (protectedPage) {
       try {
         const user = await session(request, env);

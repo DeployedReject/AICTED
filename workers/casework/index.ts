@@ -622,6 +622,7 @@ export default {
             const reason = textField(input.reason, "Update note", 1000, 3),
               type = String(input.action);
             let statement: D1PreparedStatement;
+            let eventNote = reason;
             if (type === "escalate") {
               if (c.escalated || c.status === "Disposed")
                 fail(409, "This case cannot be escalated.");
@@ -663,7 +664,7 @@ export default {
                   stamp,
                   caseId,
                 );
-            } else if (type === "transfer") {
+            } else if (type === "transfer" || type === "assign") {
               const target = await db
                 .prepare(
                   `SELECT ${userColumns} FROM officials WHERE id=? AND is_demo=? AND active=1`,
@@ -683,8 +684,44 @@ export default {
               )
                 fail(
                   403,
-                  "Transfers must be within your managed team. Cross-Bureau work needs coordination.",
+                  "Choose a member of your reporting team in the same bureau. Use coordination for another bureau.",
                 );
+              eventNote = `Assigned to ${target.name} (${target.id}). ${reason}`;
+              if (type === "assign") {
+                const results = await db.batch([
+                  db
+                    .prepare(
+                      "INSERT INTO case_events(id,case_id,kind,actor_id,body,created_at) SELECT ?,id,'assigned',?,?,? FROM cases WHERE id=? AND assigned_to=? AND updated_at=? AND intake='Approved' AND status<>'Disposed'",
+                    )
+                    .bind(
+                      id("event"),
+                      user.id,
+                      eventNote,
+                      stamp,
+                      caseId,
+                      c.assigned_to,
+                      c.updated_at,
+                    ),
+                  db
+                    .prepare(
+                      "UPDATE cases SET assigned_to=?,updated_at=? WHERE id=? AND assigned_to=? AND updated_at=? AND intake='Approved' AND status<>'Disposed'",
+                    )
+                    .bind(
+                      target.id,
+                      stamp,
+                      caseId,
+                      c.assigned_to,
+                      c.updated_at,
+                    ),
+                ]);
+                if (!results[1].meta.changes)
+                  fail(
+                    409,
+                    "The case changed while you were assigning it. Reload and try again.",
+                  );
+                return json({ ok: true });
+              }
+
               statement = db
                 .prepare(
                   "UPDATE cases SET assigned_to=?,updated_at=? WHERE id=?",
@@ -706,7 +743,7 @@ export default {
                         ? "reopened"
                         : "transferred",
                 user,
-                reason,
+                eventNote,
                 stamp,
               ),
             ]);

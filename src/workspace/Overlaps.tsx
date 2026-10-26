@@ -58,10 +58,10 @@ export default function Overlaps({
   return (
     <>
       <div className="ws-overlap-intro">
-        <b>Potential overlaps — coordination required</b>
+        <b>Potential bureau overlaps</b>
         <span>
-          Common institutions across Bureaus. Similarity does not confirm a
-          duplicate.
+          Cases at the same institution in different bureaus. Open your case to
+          request coordination.
         </span>
       </div>
       {data.length ? (
@@ -88,7 +88,7 @@ export default function Overlaps({
                 in {bureauName(m.other_bureau)}. Details require approved
                 access.
               </small>
-              <button onClick={() => open(m.case_id)}>Review</button>
+              <button onClick={() => open(m.case_id)}>Review case</button>
             </article>
           ))}
         </div>

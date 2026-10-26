@@ -11,6 +11,7 @@
       "/workspace",
       "/workspace/*",
       "/it/workspace",
+      "/it/setup",
       "/it/workspace/*",
     ],
   },
@@ -23,7 +24,7 @@
     },
   ],
   "services": [
-    {"binding":"DATABASE","service":"aicted-database"},
+    { "binding": "DATABASE", "service": "aicted-database" },
     { "binding": "CASEWORK", "service": "aicted-casework" },
     { "binding": "NOTIFICATIONS", "service": "aicted-notifications" },
   ],

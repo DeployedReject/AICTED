@@ -133,7 +133,8 @@ to the owner, as requested. Earlier runtime checks do not verify this update.
 
 ## Production setup
 
-Open `/it/setup` and use the locally stored, ignored `seed/bootstrap-token.txt`
+Sign in through `/it` first, then open Server setup → Create administrator account.
+Use the locally stored, ignored `seed/bootstrap-token.txt`
 setup code to create the first production IT account. Setup is one-time and atomic.
 Do not publish that code. Cloudflare's `BOOTSTRAP_TOKEN` can be removed afterward.
 IT can create official/manager accounts, assign reporting lines and email addresses,
@@ -193,3 +194,11 @@ Current validation: TypeScript and production build only. Browser/API tests and 
 switch exercises are left to the owner. No destination database was activated as
 part of deployment. Server-maintained schemas live in `workers/database/schema.ts`;
 the corresponding PostgreSQL download is `public/postgres/schema.sql`.
+
+Manager work is divided into Overview, Approvals, Team workload and My cases.
+Approved personal/team cases can be assigned through a searchable team-member form;
+the server enforces reporting-team membership and records the assignee in case history.
+Cases navigation contains the register, assignments, submissions/review, coordination
+and overlaps. Assigned cases are approved work; submissions have not been admitted.
+Administrator setup pages and endpoints require an existing IT session in addition
+to the one-time setup code. Login pages contain no setup link.

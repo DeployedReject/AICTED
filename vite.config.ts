@@ -9,7 +9,7 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           const path = (req.url || "").split("?")[0];
-          if (!/^\/(?:workspace|it\/workspace)(?:\/|$)/.test(path)) {
+          if (!/^\/(?:workspace|it\/(?:workspace|setup))(?:\/|$)/.test(path)) {
             next();
             return;
           }

@@ -32,15 +32,7 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [setupAvailable, setSetupAvailable] = useState(false),
-    [supportEmail, setSupportEmail] = useState("");
-  useEffect(() => {
-    if (isIT)
-      api<{ available: boolean }>("/auth/setup-status")
-        .then((r) => setSetupAvailable(r.available))
-        .catch(() => {});
-  }, [isIT]);
-
+  const [supportEmail, setSupportEmail] = useState("");
   const [dialog, setDialog] = useState<Dialog>(null);
   useEffect(() => {
     if (dialog === "support")
@@ -134,7 +126,7 @@ export default function App() {
 
   const dialogContent = {
     support: {
-      title: "Need a hand?",
+      title: "Contact support",
       text: supportEmail
         ? `Contact ${supportEmail} for account help.`
         : "Contact your administrator for account help.",
@@ -145,7 +137,7 @@ export default function App() {
     },
     admin: {
       title: "IT administration",
-      text: "Sign in with your assigned official ID and designation. Administration appears only for accounts granted IT access.",
+      text: "Sign in through IT administration using your assigned ID and password.",
     },
   };
 
@@ -338,7 +330,6 @@ export default function App() {
                     </button>
                   </form>
                   <div className="login-links">
-                    {isIT && setupAvailable && <a href="/it/setup">Setup</a>}
                     <button
                       className="text-button"
                       type="button"
@@ -348,7 +339,9 @@ export default function App() {
                         )
                       }
                     >
-                      {audience === "official" ? "Support" : "Access"}
+                      {audience === "official"
+                        ? "Contact support"
+                        : "Request account access"}
                     </button>
                   </div>
                 </div>

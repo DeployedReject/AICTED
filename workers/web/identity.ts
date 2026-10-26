@@ -1,7 +1,7 @@
 import type { Env } from "../shared";
 import type { Official } from "../../packages/shared/types";
 import { body, fail, id, json, now, textField, userColumns } from "../shared";
-import { passwordHash, sha } from "../auth";
+import { passwordHash, sha, session } from "../auth";
 import { runtime } from "../runtime";
 export async function identity(
   request: Request,
@@ -12,6 +12,14 @@ export async function identity(
   if (path === "/api/public-config" && request.method === "GET") {
     const cfg = await runtime(env, 0);
     return json({ site_name: cfg.site_name, support_email: cfg.support_email });
+  }
+  if (path === "/api/auth/setup" || path === "/api/auth/setup-status") {
+    const user = await session(request, env);
+    if (user.role !== "it")
+      fail(
+        403,
+        "Sign in to IT administration before setting up an administrator account.",
+      );
   }
   if (path === "/api/auth/setup-status" && request.method === "GET") {
     const row = await env.DB.prepare(

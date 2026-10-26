@@ -938,15 +938,7 @@
 .ws-metrics > div {
   position: relative;
 }
-.ws-metrics > div:before {
-  content: "";
-  position: absolute;
-  top: -2px;
-  left: 0;
-  width: 26px;
-  height: 2px;
-  background: var(--orange);
-}
+
 .ws-metrics strong {
   font-size: 31px;
   letter-spacing: -1.7px;
@@ -2655,4 +2647,220 @@
 .ws-field-help a {
   display: block;
   margin-top: 8px;
+}
+
+/* Size child layouts from the available content width, including inside dialogs. */
+.ws-body,
+.ws-content,
+.ws-scene,
+.ws-card,
+.ws-chart,
+.ws-admin,
+.ws-manager-home,
+.ws-database-settings,
+.ws-setup-guide,
+.ws-help,
+.ws-card form,
+.ws-form-row > *,
+.ws-admin-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.ws-content {
+  container-type: inline-size;
+}
+.ws-form-row {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+}
+.ws-admin-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+}
+.ws-chart-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+}
+.ws-chart-wide,
+.ws-chart-full {
+  grid-column: 1/-1;
+}
+.ws-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  border-top: 1px solid var(--border);
+}
+.ws-card dl {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+}
+.ws-card dt,
+.ws-card dd,
+.ws-card h2,
+.ws-card p,
+.ws-description,
+.ws-help li {
+  overflow-wrap: break-word;
+}
+.ws-card dd {
+  margin: 0;
+}
+.ws-help dl {
+  grid-template-columns: minmax(0, 1fr);
+}
+.ws-report-toolbar,
+.ws-form-actions,
+.ws-bar-legend,
+.ws-quick-filters {
+  flex-wrap: wrap;
+}
+.ws-form-actions {
+  display: flex;
+  gap: 8px;
+}
+.workspace .ws-form-actions button {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+.ws-filters > *,
+.ws-institution-filter {
+  min-width: 0;
+  max-width: 100%;
+}
+.ws-institution-filter {
+  flex: 1 1 12rem;
+}
+.ws-institution-filter > div {
+  width: min(310px, 100%);
+  max-width: 100%;
+}
+.ws-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.ws-table-scroll > table {
+  min-width: 36rem;
+}
+.ws-months {
+  gap: clamp(4px, 1.5cqw, 15px);
+}
+.ws-months small {
+  display: block;
+  white-space: nowrap;
+  font-size: clamp(8px, 2.5cqw, 10px);
+}
+.ws-months b {
+  white-space: nowrap;
+}
+.ws-bureau-pair {
+  flex-wrap: wrap;
+}
+.ws-sidebar nav .ws-cases-submenu {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 5px 13px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+.workspace .ws-sidebar nav .ws-cases-submenu button {
+  min-height: clamp(25px, 3.8vh, 31px);
+  font-size: 11px;
+  padding: 5px 7px;
+  line-height: 1.3;
+}
+.ws-assignment-dialog {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+}
+.ws-assignment-dialog::backdrop {
+  background: #0007;
+}
+.workspace .ws-assign-button {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+@container (max-width:640px) {
+  .ws-board,
+  .ws-admin-grid,
+  .ws-chart-grid,
+  .ws-institutions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ws-manager-priorities {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  }
+  .ws-card,
+  .ws-chart {
+    padding: clamp(12px, 3cqw, 18px);
+  }
+  .workspace h1 {
+    font-size: clamp(23px, 6cqw, 30px);
+  }
+  .ws-report-toolbar {
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .ws-card dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .ws-card dd {
+    margin-bottom: 8px;
+  }
+}
+@media (max-aspect-ratio: 1/1) {
+  .ws-sidebar nav.ws-sliding-nav {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 3px 6px;
+  }
+  .workspace .ws-sidebar nav > button {
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .ws-sidebar nav .ws-cases-submenu {
+    order: 1;
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 4px 0 0;
+    padding: 6px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .workspace .ws-sidebar nav .ws-cases-submenu button {
+    white-space: nowrap;
+    min-height: 30px;
+  }
+}
+
+.ws-report-note,
+.ws-chart-summary,
+.ws-pagination {
+  flex-wrap: wrap;
+}
+.ws-manager-review {
+  display: block;
+}
+.ws-sidebar nav .ws-cases-submenu button {
+  width: 100%;
+}
+@media (max-aspect-ratio: 1/1) {
+  .workspace .ws-sidebar nav .ws-cases-submenu button {
+    width: auto;
+  }
+}
+.ws-assignment-dialog .ws-picker {
+  min-width: 0;
+}
+
+.workspace .ws-tabs button {
+  flex: 0 0 auto;
 }

@@ -37,6 +37,19 @@ export default function Admin({
   section: string;
 }) {
   const [accountView, setAccountView] = useState("directory");
+  const [setupAvailable, setSetupAvailable] = useState(false);
+  useEffect(() => {
+    if (section !== "Server") return;
+    let current = true;
+    api<{ available: boolean }>("/auth/setup-status")
+      .then((result) => {
+        if (current) setSetupAvailable(result.available);
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [section]);
   const [account, setAccount] = useState<Official | null>(null),
     [accountRole, setAccountRole] = useState("official");
   const [data, setData] = useState<Config | null>(null),
@@ -368,7 +381,9 @@ export default function Admin({
               <dt>Reminders</dt>
               <dd>{data.runtime.reminders_enabled ? "Enabled" : "Disabled"}</dd>
             </dl>
-            {data.is_demo === 1 && <a href="/it/setup">Production setup →</a>}
+            {setupAvailable && (
+              <a href="/it/setup">Create administrator account →</a>
+            )}
             <h3>Recent changes</h3>
             {data.logs.map((r, i) => (
               <p key={i}>

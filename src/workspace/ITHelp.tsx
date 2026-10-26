@@ -5,7 +5,7 @@ const help: Record<
   Server: {
     title: "Server setup",
     intro:
-      "Start here when handing the portal to a new administrator. Configure the public address before enabling email.",
+      "Start by setting your portal’s public address, session duration and reminder lead time. Configure email delivery before enabling notifications.",
     steps: [
       "Set the portal name and public HTTPS address.",
       "Choose how long new sign-in sessions last.",
@@ -60,7 +60,7 @@ const help: Record<
   Bureaus: {
     title: "Bureau directory",
     intro:
-      "Maintain the bureau and cell names used for accounts, cases and reports. The supplied reference catalogue is a starting point.",
+      "Maintain the bureau and cell names used for accounts, cases and reports. Check these names against your current organisation record.",
     steps: [
       "Check the current official office order before changing names or authority.",
       "Keep the code stable when renaming a bureau so existing case history remains connected.",
@@ -79,8 +79,7 @@ const help: Record<
   },
   Institutions: {
     title: "Institution records",
-    intro:
-      "IT maintains institution master records. Officials can search institutions and read case history within their permissions.",
+    intro: "Register each institution once using its AICTE Permanent ID.",
     steps: [
       "Check whether the institution already exists by name and Permanent ID.",
       "Enter its official name, AICTE Permanent ID, city, state and region.",
@@ -103,7 +102,7 @@ const help: Record<
       "Choose a provider and configure verified sender addresses. Delivery is disabled until explicitly enabled.",
     steps: [
       "Create a Resend or SendGrid account and verify a domain with that provider.",
-      "Create a sending API key and paste it into API key. The eye reveals a key only when requested.",
+      "Create a sending API key with your provider and paste it into the API key field.",
       "Set the password-recovery sender and case-update sender; they can be the same verified address.",
       "Set reply-to and support addresses, then save.",
       "Send a verification message to your IT account. Provider acceptance does not guarantee inbox delivery.",
@@ -131,7 +130,7 @@ const help: Record<
   Database: {
     title: "Database connections",
     intro:
-      "The active connection serves application records. A fixed D1 control store retains IT recovery access and encrypted connection settings.",
+      "Add the connection that will store your case records. Save and test it before activating it.",
     steps: [
       "Create an empty D1 database or a PostgreSQL 16+ database with a public TLS endpoint.",
       "Save a connection. For D1, use an API token with D1 read/write access to the chosen account. For PostgreSQL, provide a database user and password.",
@@ -210,9 +209,8 @@ export function SetupGuide() {
   return (
     <div className="ws-setup-guide">
       <p>
-        Follow these steps to configure and manage the portal. Changes to
-        connected services are made through these forms; provider account and
-        domain setup happens on the provider’s website.
+        Use this guide to configure your portal. Start with portal settings and
+        email delivery, then add accounts and reporting lines.
       </p>
       {Object.keys(help).map((section) => (
         <ITHelp key={section} section={section} expanded />

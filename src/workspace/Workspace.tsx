@@ -1,7 +1,8 @@
+import AssignCase from "./AssignCase";
 import ManagerHome from "./ManagerHome";
 import DatabaseSettings from "./DatabaseSettings";
 import { SetupGuide } from "./ITHelp";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type {
   Bootstrap,
@@ -119,7 +120,9 @@ function ErrorBox({ text }: { text: string }) {
 function CaseTable({
   rows,
   open,
+  assign,
 }: {
+  assign?: (record: CaseRecord) => void;
   rows: CaseRecord[];
   open: (id: string) => void;
 }) {
@@ -157,6 +160,16 @@ function CaseTable({
               <td>
                 {c.assigned_name}
                 <small>{bureauName(c.bureau)}</small>
+                {assign &&
+                  c.intake === "Approved" &&
+                  c.status !== "Disposed" && (
+                    <button
+                      className="ws-assign-button"
+                      onClick={() => assign(c)}
+                    >
+                      Assign case
+                    </button>
+                  )}
               </td>
               <td
                 className={
@@ -190,7 +203,9 @@ export default function Workspace() {
     ),
     [creating, setCreating] = useState(false);
   const { data: boot, error } = useLoad<Bootstrap>("/bootstrap", version);
-  const [homeView, setHomeView] = useState("assigned");
+  const [casesView, setCasesView] = useState("all");
+  const [managerTab, setManagerTab] = useState("overview"),
+    [approvalView, setApprovalView] = useState("proposed");
   const pageLabel = (p: string) =>
     (
       ({
@@ -253,7 +268,7 @@ export default function Workspace() {
           </span>
         </a>
 
-        <SlidingNav selected={page}>
+        <SlidingNav selected={page === "Cases" ? "Cases-" + casesView : page}>
           {(
             (isIT
               ? [
@@ -268,43 +283,79 @@ export default function Workspace() {
               : [
                   "My Work",
                   "Cases",
-                  "Overlaps",
                   ...(user.role === "manager" ? ["Team"] : []),
                   "Institutions",
                   "Messages",
                   "Reports",
                 ]) as Page[]
           ).map((p) => (
-            <button
-              className={p === page && !selected ? "active" : ""}
-              aria-current={p === page ? "page" : undefined}
-              key={p}
-              onClick={() => {
-                setPage(p);
-                setSelected(null);
-                setCreating(false);
-              }}
-            >
-              <span aria-hidden="true">
-                {p === "Cases" || p === "Messages" ? (
-                  <i
-                    className="ws-nav-glyph"
-                    style={{
-                      maskImage: `url(${p === "Cases" ? caseGlyph : mailGlyph})`,
-                    }}
-                  />
-                ) : (
-                  <NavIcon name={p} />
-                )}
-              </span>
-              {p === "My Work"
-                ? user.role === "manager"
-                  ? "Team overview"
-                  : "My work"
-                : p === "Administration"
-                  ? "Settings"
-                  : pageLabel(p)}
-            </button>
+            <Fragment key={p}>
+              <button
+                className={p === page && !selected ? "active" : ""}
+                aria-current={p === page && p !== "Cases" ? "page" : undefined}
+                aria-expanded={p === "Cases" ? page === "Cases" : undefined}
+                key={p}
+                onClick={() => {
+                  setPage(p);
+                  if (p === "Cases") setCasesView("all");
+                  setSelected(null);
+                  setCreating(false);
+                }}
+              >
+                <span aria-hidden="true">
+                  {p === "Cases" || p === "Messages" ? (
+                    <i
+                      className="ws-nav-glyph"
+                      style={{
+                        maskImage: `url(${p === "Cases" ? caseGlyph : mailGlyph})`,
+                      }}
+                    />
+                  ) : (
+                    <NavIcon name={p} />
+                  )}
+                </span>
+                {p === "My Work"
+                  ? user.role === "manager"
+                    ? "Team overview"
+                    : "My work"
+                  : p === "Administration"
+                    ? "Settings"
+                    : pageLabel(p)}
+              </button>
+              {p === "Cases" && page === "Cases" && (
+                <div
+                  className="ws-cases-submenu"
+                  role="group"
+                  aria-label="Case views"
+                >
+                  {[
+                    ["all", "Case register"],
+                    ["assigned", "Assigned cases"],
+                    [
+                      "proposed",
+                      user.role === "manager"
+                        ? "Intake review"
+                        : "My submissions",
+                    ],
+                    ["coordination", "Coordination requests"],
+                    ["overlaps", "Bureau overlaps"],
+                  ].map(([view, label]) => (
+                    <button
+                      key={view}
+                      aria-current={casesView === view ? "page" : undefined}
+                      className={casesView === view ? "active" : ""}
+                      onClick={() => {
+                        setCasesView(view);
+                        setSelected(null);
+                        setCreating(false);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Fragment>
           ))}
         </SlidingNav>
         <div className="ws-sidebar-bottom">
@@ -355,7 +406,15 @@ export default function Workspace() {
         </header>
         <main className="ws-content">
           <Scene
-            scene={selected ? "case-" + selected : creating ? "intake" : page}
+            scene={
+              selected
+                ? "case-" + selected
+                : creating
+                  ? "intake"
+                  : page === "Cases"
+                    ? "Cases-" + casesView
+                    : page
+            }
           >
             {selected ? (
               <Board
@@ -407,13 +466,18 @@ export default function Workspace() {
                       className="ws-primary"
                       onClick={() => setCreating(true)}
                     >
-                      + Register
+                      + Register case
                     </button>
                   )}
                 </div>
                 {page === "My Work" && user.role === "official" && (
                   <div className="ws-attention">
-                    <button onClick={() => setPage("Overlaps")}>
+                    <button
+                      onClick={() => {
+                        setPage("Cases");
+                        setCasesView("overlaps");
+                      }}
+                    >
                       <span>Overlaps</span>
                       <b>{boot.summary.overlaps}</b>
                     </button>
@@ -438,18 +502,87 @@ export default function Workspace() {
                     ))}
                   </div>
                 )}
-                {page === "My Work" && user.role === "manager" && (
-                  <ManagerHome
-                    version={version}
-                    open={setSelected}
-                    review={(view) => setHomeView(view)}
-                    team={() => setPage("Team")}
-                  />
-                )}
-                {(page === "My Work" || page === "Cases") && (
+                {(page === "My Work" || page === "Team") &&
+                  user.role === "manager" && (
+                    <ManagerHome
+                      version={version}
+                      open={setSelected}
+                      tab={page === "Team" ? "team" : managerTab}
+                      onTab={(tab) => {
+                        if (tab === "team") setPage("Team");
+                        else {
+                          setManagerTab(tab);
+                          setPage("My Work");
+                        }
+                      }}
+                      review={(view) => {
+                        setApprovalView(view);
+                        setManagerTab("approvals");
+                        setPage("My Work");
+                      }}
+                      team={() => setPage("Team")}
+                    >
+                      {page === "Team" ? (
+                        <>
+                          <Team version={version} />
+                          <CaseList
+                            boot={boot}
+                            version={version}
+                            open={setSelected}
+                            all={false}
+                            refresh={refresh}
+                            initialView="team"
+                          />
+                        </>
+                      ) : managerTab === "approvals" ? (
+                        <>
+                          <div
+                            className="ws-tabs"
+                            role="group"
+                            aria-label="Approval type"
+                          >
+                            {[
+                              ["proposed", "Intake review"],
+                              ["coordination", "Coordination requests"],
+                            ].map(([view, label]) => (
+                              <button
+                                key={view}
+                                className={
+                                  approvalView === view ? "active" : ""
+                                }
+                                onClick={() => setApprovalView(view)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                          <CaseList
+                            key={approvalView}
+                            boot={boot}
+                            version={version}
+                            open={setSelected}
+                            all={false}
+                            refresh={refresh}
+                            initialView={approvalView}
+                          />
+                        </>
+                      ) : managerTab === "assigned" ? (
+                        <CaseList
+                          boot={boot}
+                          version={version}
+                          open={setSelected}
+                          all={false}
+                          refresh={refresh}
+                          initialView="assigned"
+                        />
+                      ) : null}
+                    </ManagerHome>
+                  )}
+                {((page === "My Work" && user.role !== "manager") ||
+                  (page === "Cases" && casesView !== "overlaps")) && (
                   <CaseList
-                    key={page + homeView}
-                    initialView={page === "My Work" ? homeView : undefined}
+                    key={page + casesView}
+                    initialView={page === "My Work" ? "assigned" : casesView}
                     boot={boot}
                     version={version}
                     open={setSelected}
@@ -468,20 +601,7 @@ export default function Workspace() {
                     open={setSelected}
                   />
                 )}
-                {page === "Team" && (
-                  <>
-                    <Team version={version} />
-                    <CaseList
-                      boot={boot}
-                      version={version}
-                      open={setSelected}
-                      all={false}
-                      refresh={refresh}
-                      initialView="team"
-                    />
-                  </>
-                )}
-                {page === "Overlaps" && (
+                {page === "Cases" && casesView === "overlaps" && (
                   <Overlaps version={version} open={setSelected} />
                 )}
                 {page === "Reports" && <Reports version={version} />}
@@ -514,8 +634,9 @@ function CaseList({
   all: boolean;
   refresh: () => void;
 }) {
-  const [view, setView] = useState(initialView || (all ? "all" : "assigned")),
-    [q, setQ] = useState(""),
+  const [assignment, setAssignment] = useState<CaseRecord | null>(null);
+  const view = initialView || (all ? "all" : "assigned");
+  const [q, setQ] = useState(""),
     [search, setSearch] = useState(""),
     [tag, setTag] = useState(""),
     [institution, setInstitution] = useState(""),
@@ -557,37 +678,30 @@ function CaseList({
   );
   return (
     <>
-      <div className="ws-tabs" role="group" aria-label="Case view">
-        {(all
-          ? ["all"]
-          : [
-              "assigned",
-              ...(boot.user.role === "manager"
-                ? ["team", "proposed"]
-                : ["proposed"]),
-              "coordination",
-            ]
-        ).map((v) => (
-          <button
-            key={v}
-            className={view === v ? "active" : ""}
-            onClick={() => {
-              setCursor("");
-              setView(v);
-            }}
-          >
-            {
-              {
-                all: "All cases",
-                assigned: "Assigned cases",
-                team: "Team cases",
-                proposed: "Intake review",
-                coordination: "Coordination",
-              }[v]
-            }
-          </button>
-        ))}
-      </div>
+      {assignment && (
+        <AssignCase
+          record={assignment}
+          officials={boot.officials}
+          cancel={() => setAssignment(null)}
+          done={() => {
+            setAssignment(null);
+            refresh();
+          }}
+        />
+      )}
+      <p className="ws-description">
+        {view === "assigned"
+          ? "Approved, open cases assigned to you."
+          : view === "proposed"
+            ? boot.user.role === "manager"
+              ? "Team submissions awaiting a decision, returned for changes, or rejected. Your own submissions need your reporting manager’s approval."
+              : "Your submissions awaiting approval, returned for changes, or rejected. Approved cases move to Assigned cases."
+            : view === "team"
+              ? "Approved cases assigned to officials in your reporting team."
+              : view === "coordination"
+                ? "Requests to share a case with an official in another bureau. Both approvals are needed before access is granted."
+                : "Approved cases you can access, including closed cases."}
+      </p>
       {view === "coordination" ? (
         <CoordinationList version={version} refresh={refresh} open={open} />
       ) : (
@@ -728,7 +842,16 @@ function CaseList({
             <Skeleton />
           ) : (
             <>
-              <CaseTable rows={data.cases} open={open} />
+              <CaseTable
+                rows={data.cases}
+                open={open}
+                assign={
+                  boot.user.role === "manager" &&
+                  ["assigned", "team"].includes(view)
+                    ? setAssignment
+                    : undefined
+                }
+              />
               <div className="ws-pagination">
                 <span>Up to 25 cases per page</span>
                 {cursor && (
@@ -1115,7 +1238,7 @@ function Board({
                         )}
                         <option value="dispose">Mark disposed</option>
                         {boot.user.role === "manager" && (
-                          <option value="transfer">Transfer within team</option>
+                          <option value="assign">Assign to team member</option>
                         )}
                       </>
                     )}
@@ -1160,16 +1283,15 @@ function Board({
                         </label>
                       </>
                     )}
-                    {action === "transfer" && (
+                    {action === "assign" && (
                       <OfficialPicker
                         name="official_id"
-                        label="Official"
+                        label="Team member"
                         officials={boot.officials}
                         bureau={c.bureau}
                         kind="team"
                         required
                         excludeId={c.assigned_to}
-                        complete={boot.officials.length < 100}
                       />
                     )}
                     <label>
@@ -1300,7 +1422,7 @@ function Board({
                   officials={boot.officials}
                   excludeBureau={c.bureau}
                   required
-                  complete={boot.officials.length < 100}
+
                   onSelect={(o) => setTarget(o?.id || "")}
                 />
                 <label>
@@ -1712,7 +1834,6 @@ function Messages({
             officials={boot.officials}
             required
             excludeId={boot.user.id}
-            complete={boot.officials.length < 100}
           />
           <label>
             Case ID (optional)

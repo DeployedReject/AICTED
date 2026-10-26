@@ -282,8 +282,8 @@ export default function DatabaseSettings() {
                   </label>
                 </div>
                 <p className="ws-description">
-                  Connections use TLS. A provider’s public pooler endpoint is
-                  supported.
+                  Enter your provider’s public database or pooler hostname. The
+                  connection requires TLS.
                 </p>
               </>
             )}
