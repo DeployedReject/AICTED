@@ -1,4 +1,4 @@
--- AICTED PostgreSQL 16+ live application schema, version 11.
+-- AICTED PostgreSQL 16+ live application schema, version 15.
 BEGIN;
 -- Compatible application schema. Connection registry and IT recovery remain in the original D1.
 
@@ -104,7 +104,7 @@ CREATE INDEX documents_case ON case_documents(case_id,status,created_at);
 CREATE INDEX documents_dataset ON case_documents(is_demo,status,created_at);
 CREATE TABLE case_folders(case_id TEXT COLLATE "C" PRIMARY KEY REFERENCES cases(id),drive_url TEXT COLLATE "C" NOT NULL,updated_by TEXT COLLATE "C" NOT NULL REFERENCES officials(id),updated_at TEXT COLLATE "C" NOT NULL);
 CREATE TABLE app_schema(version INTEGER PRIMARY KEY,applied_at TEXT COLLATE "C" NOT NULL);
-INSERT INTO app_schema VALUES(11,to_char(now() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
+INSERT INTO app_schema VALUES(15,to_char(now() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 CREATE OR REPLACE FUNCTION enqueue_case_mail() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
  INSERT INTO notification_outbox(id,recipient_id,case_id,event_id,kind,created_at,updated_at)
  SELECT 'mail-'||NEW.id,c.assigned_to,c.id,NEW.id,'update',NEW.created_at,NEW.created_at
@@ -115,4 +115,61 @@ CREATE OR REPLACE FUNCTION enqueue_case_mail() RETURNS TRIGGER LANGUAGE plpgsql 
 END; $$;
 CREATE TRIGGER case_event_mail AFTER INSERT ON case_events FOR EACH ROW EXECUTE FUNCTION enqueue_case_mail();
 
+ALTER TABLE institutions ADD COLUMN address TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE institutions ADD COLUMN district TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE institutions ADD COLUMN postal_code TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE institutions ADD COLUMN aishe_code TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE institutions ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
+CREATE TABLE institution_accounts(
+ id TEXT COLLATE "C" PRIMARY KEY,institution_id TEXT COLLATE "C" NOT NULL REFERENCES institutions(id),name TEXT COLLATE "C" NOT NULL,email TEXT COLLATE "C" NOT NULL,
+ password_hash TEXT COLLATE "C" NOT NULL,password_salt TEXT COLLATE "C" NOT NULL,active INTEGER NOT NULL DEFAULT 1,is_demo INTEGER NOT NULL CHECK(is_demo IN(0,1)),created_at TEXT COLLATE "C" NOT NULL
+);
+CREATE INDEX institution_accounts_scope ON institution_accounts(is_demo,institution_id,active);
+CREATE TABLE institution_sessions(token_hash TEXT COLLATE "C" PRIMARY KEY,account_id TEXT COLLATE "C" NOT NULL REFERENCES institution_accounts(id),expires_at INTEGER NOT NULL);
+CREATE INDEX institution_session_account ON institution_sessions(account_id,expires_at);
+CREATE TABLE institution_routing(is_demo INTEGER NOT NULL,bureau TEXT COLLATE "C" NOT NULL,approver_id TEXT COLLATE "C" NOT NULL REFERENCES officials(id),PRIMARY KEY(is_demo,bureau));
+ALTER TABLE case_folders ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0 CHECK(is_public IN(0,1));
+ALTER TABLE cases ADD COLUMN institution_account_id TEXT COLLATE "C" REFERENCES institution_accounts(id);
+ALTER TABLE cases ADD COLUMN cancellation_state TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE cases ADD COLUMN institution_escalation TEXT COLLATE "C" NOT NULL DEFAULT '';
+CREATE INDEX cases_institution_received ON cases(is_demo,institution_id,received_at,id);
+CREATE TABLE institution_events(
+ id TEXT COLLATE "C" PRIMARY KEY,case_id TEXT COLLATE "C" NOT NULL REFERENCES cases(id),account_id TEXT COLLATE "C" NOT NULL REFERENCES institution_accounts(id),kind TEXT COLLATE "C" NOT NULL,
+ body TEXT COLLATE "C" NOT NULL,created_at TEXT COLLATE "C" NOT NULL,actor_name TEXT COLLATE "C" NOT NULL,rating INTEGER
+);
+CREATE INDEX institution_events_case ON institution_events(case_id,created_at,id);
+CREATE UNIQUE INDEX institution_single_review ON institution_events(case_id,account_id,kind) WHERE kind='review';
+ALTER TABLE case_events ADD COLUMN actor_name_snapshot TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE case_events ADD COLUMN actor_bureau_snapshot TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE case_events ADD COLUMN actor_designation_snapshot TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE case_events ADD COLUMN case_status_snapshot TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE case_events ADD COLUMN case_bureau_snapshot TEXT COLLATE "C" NOT NULL DEFAULT '';
+ALTER TABLE case_events ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0 CHECK(is_public IN(0,1));
+CREATE TABLE handoff_requests(id TEXT COLLATE "C" PRIMARY KEY,case_id TEXT COLLATE "C" NOT NULL REFERENCES cases(id),requester_id TEXT COLLATE "C" NOT NULL REFERENCES officials(id),target_id TEXT COLLATE "C" NOT NULL REFERENCES officials(id),source_bureau TEXT COLLATE "C" NOT NULL,target_bureau TEXT COLLATE "C" NOT NULL,status TEXT COLLATE "C" NOT NULL DEFAULT 'Awaiting receiving manager',reason TEXT COLLATE "C" NOT NULL,created_at TEXT COLLATE "C" NOT NULL,decided_at TEXT COLLATE "C",decided_by TEXT COLLATE "C" REFERENCES officials(id));
+CREATE INDEX handoff_scope ON handoff_requests(target_bureau,status,created_at);
+CREATE UNIQUE INDEX handoff_open ON handoff_requests(case_id) WHERE status='Awaiting receiving manager';
+
+CREATE OR REPLACE FUNCTION snapshot_case_event() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
+ IF NEW.actor_name_snapshot='' THEN
+ SELECT name,bureau,designation INTO NEW.actor_name_snapshot,NEW.actor_bureau_snapshot,NEW.actor_designation_snapshot FROM officials WHERE id=NEW.actor_id;
+ SELECT status,bureau INTO NEW.case_status_snapshot,NEW.case_bureau_snapshot FROM cases WHERE id=NEW.case_id;
+ END IF; RETURN NEW; END; $$;
+CREATE TRIGGER event_actor_snapshot BEFORE INSERT ON case_events FOR EACH ROW EXECUTE FUNCTION snapshot_case_event();
+CREATE TRIGGER institution_history BEFORE UPDATE OR DELETE ON institution_events FOR EACH ROW EXECUTE FUNCTION immutable_case_events();
+
+CREATE TABLE case_notices(id TEXT COLLATE "C" PRIMARY KEY,case_id TEXT COLLATE "C" NOT NULL REFERENCES cases(id),official_id TEXT COLLATE "C" NOT NULL REFERENCES officials(id),kind TEXT COLLATE "C" NOT NULL,body TEXT COLLATE "C" NOT NULL,created_at TEXT COLLATE "C" NOT NULL,read_at TEXT COLLATE "C");
+CREATE INDEX notices_official ON case_notices(official_id,created_at DESC,id);
+CREATE INDEX notices_unread ON case_notices(official_id,read_at);
+ALTER TABLE case_events ADD COLUMN case_assigned_snapshot TEXT COLLATE "C" NOT NULL DEFAULT '';
+CREATE OR REPLACE FUNCTION snapshot_case_event() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
+ IF NEW.actor_name_snapshot='' THEN
+ SELECT name,bureau,designation INTO NEW.actor_name_snapshot,NEW.actor_bureau_snapshot,NEW.actor_designation_snapshot FROM officials WHERE id=NEW.actor_id;
+ SELECT status,bureau,assigned_to INTO NEW.case_status_snapshot,NEW.case_bureau_snapshot,NEW.case_assigned_snapshot FROM cases WHERE id=NEW.case_id;
+ END IF; RETURN NEW; END; $$;
+CREATE TABLE institution_password_resets(token_hash TEXT COLLATE "C" PRIMARY KEY,account_id TEXT COLLATE "C" NOT NULL REFERENCES institution_accounts(id),expires_at INTEGER NOT NULL,used INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX institution_resets_account ON institution_password_resets(account_id,expires_at);
+CREATE TABLE institution_recovery_usage(account_id TEXT COLLATE "C" NOT NULL REFERENCES institution_accounts(id),day TEXT COLLATE "C" NOT NULL,calls INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(account_id,day));
+CREATE INDEX event_responsible_time ON case_events(case_assigned_snapshot,kind,created_at);
+CREATE INDEX event_actor_time ON case_events(actor_id,kind,created_at);
+CREATE INDEX event_bureau_time ON case_events(case_bureau_snapshot,kind,created_at);
 COMMIT;

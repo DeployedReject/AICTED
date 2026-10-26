@@ -2,7 +2,7 @@
 
 Status: the core workspace and D1 permission model are implemented. Production
 authority mappings still need verified office orders; demo identities are fictional.
-Institutional self-service intake and delegated approvers with effective dates remain future extensions. Email delivery and reminders are configurable through IT.
+Institutional self-service intake is implemented. Effective-dated temporary delegated approvers remain outside the current scope. Email delivery and reminders are configurable through IT.
 
 ## Navigation
 
@@ -25,8 +25,7 @@ IT manages institution master records.
   approval are separate capabilities. A manager flag does not imply every power.
 - Coordination shares approved information with selected officials. Such grants
   do not automatically spread to their whole Bureau or reporting tree.
-- Proposed: block self-approval; route a manager's own proposal to their configured
-  approver. Record delegated approvers and effective dates without reporting cycles.
+- Official self-approval is blocked. A manager’s own official submission requires a higher configured manager. Institution submissions are routed to a configured intake manager, with their actual submitter recorded separately. Reporting cycles are blocked.
 
 ## Case intake
 
@@ -95,3 +94,15 @@ bureau labels, delivery credentials and server settings through guided forms. It
 recovery sign-in stays on the original D1. Live database switching is coordinated
 by a private database Worker and a serialized Durable Object; prepared destinations
 and copied destinations both require explicit activation. See the in-app guide.
+
+## Institution portal and public history
+
+Institution accounts are tied to one verified institution. Only institution-originated cases at that institution are exposed; internal investigations stay private. Major processing events appear in a paginated history with sanitized text. Ordinary comments and Drive links are hidden unless their author explicitly marks them institution-visible. Escalation and cancellation are requests requiring the responsible manager’s decision. Returned submissions can be revised without changing their original receipt. Disposed cases accept a recorded outcome review.
+
+## Ownership handoff and historical reporting
+
+The responsible manager requests another bureau’s selected official as owner. The receiving official’s manager approves or rejects before any ownership or detail access changes. Approval records outgoing and incoming events, then retains read-only access for the previous owner and source manager. Shared coordination grants never imply ownership authority.
+
+Reports use complete server aggregates rather than a limited client case list. Current workload follows current assignment; historical disposal and transfer totals use event-time actor, assignee and bureau snapshots. Pre-snapshot history is retained with recorded legacy values, without guessing a previous name or owner. Date filters select receipt dates; period performance also places disposal/transfer events in their actual UTC periods.
+
+Targeted WebSocket signals contain no case contents. Clients refetch their authorized data; private comments do not refresh institution subscribers. Normal operation uses no repeated database polling.

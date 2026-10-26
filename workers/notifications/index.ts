@@ -1,3 +1,4 @@
+import { scope } from "../casework/access";
 import { applicationEnv } from "../database/client";
 import type { Env } from "../shared";
 import type { Official } from "../../packages/shared/types";
@@ -20,7 +21,7 @@ async function send(
   if (!key) fail(503, "The email provider key is not configured.");
   const quota = await (env.CONTROL_DB || env.DB)
     .prepare(
-      "INSERT INTO mail_daily(day,attempts) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1 WHERE attempts<?",
+      "INSERT INTO mail_daily(day,attempts) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET attempts=mail_daily.attempts+1 WHERE mail_daily.attempts<?",
     )
     .bind(now().slice(0, 10), cfg.daily_email_limit)
     .run();
@@ -118,9 +119,56 @@ export default {
     env = applicationEnv(env, request.headers.get("x-db-generation"));
     return guard(async () => {
       const user = actor(request, env);
+      const requestedPath = new URL(request.url).pathname;
+      if (requestedPath === "/api/notices") {
+        if (!["official", "manager"].includes(user.role))
+          fail(403, "Official access is required.");
+        if (request.method === "GET") {
+          const s = scope(user),
+            cursor = (
+              new URL(request.url).searchParams.get("cursor") || ""
+            ).slice(0, 300);
+          let date = "~",
+            key = "~";
+          if (cursor) {
+            try {
+              const parsed = JSON.parse(atob(cursor));
+              date = String(parsed[0]);
+              key = String(parsed[1]);
+            } catch {
+              fail(400, "Invalid notice cursor.");
+            }
+          }
+          const result = await env.DB.prepare(
+            `${s.sql} SELECT n.id,n.kind,n.created_at,n.read_at,CASE WHEN n.case_id IN(SELECT id FROM visible) THEN n.case_id ELSE NULL END case_id,CASE WHEN n.case_id IN(SELECT id FROM visible) THEN n.body ELSE 'Case access has changed.' END body FROM case_notices n WHERE n.official_id=? AND (n.created_at<? OR (n.created_at=? AND n.id<?)) ORDER BY n.created_at DESC,n.id DESC LIMIT 26`,
+          )
+            .bind(...s.args, user.id, date, date, key)
+            .all();
+          return json({
+            notices: result.results.slice(0, 25),
+            next:
+              result.results.length > 25
+                ? btoa(
+                    JSON.stringify([
+                      result.results[24].created_at,
+                      result.results[24].id,
+                    ]),
+                  )
+                : null,
+          });
+        }
+        if (request.method !== "POST") fail(405, "Method not allowed.");
+        const input = await body(request);
+        await env.DB.prepare(
+          "UPDATE case_notices SET read_at=? WHERE id=? AND official_id=? AND read_at IS NULL",
+        )
+          .bind(now(), String(input.id || "").slice(0, 300), user.id)
+          .run();
+        return json({ ok: true });
+      }
       if (user.is_demo)
         fail(403, "Email delivery is disabled for demo accounts.");
-      const input = await body(request),
+      const input = request.method === "GET" ? {} : await body(request),
         path = new URL(request.url).pathname,
         cfg = await runtime(env, 0);
       if (path === "/recovery") {
@@ -129,13 +177,15 @@ export default {
           user.role === "it" ? env.CONTROL_DB || env.DB : env.DB
         )
           .prepare(
-            "SELECT email FROM officials WHERE id=? AND is_demo=0 AND active=1",
+            user.role === "institution"
+              ? "SELECT email FROM institution_accounts WHERE id=? AND is_demo=0 AND active=1"
+              : "SELECT email FROM officials WHERE id=? AND is_demo=0 AND active=1",
           )
           .bind(user.id)
           .first<{ email: string }>();
         if (!recipient?.email) fail(400, "Account email unavailable.");
         const token = String(input.token || "");
-        if (!/^(?:it\.)?[a-f0-9-]{64,100}$/i.test(token))
+        if (!/^(?:(?:it|institution)\.)?[a-f0-9-]{64,100}$/i.test(token))
           fail(400, "Invalid recovery token.");
         const url = new URL("/reset", cfg.public_url);
         url.searchParams.set("token", token);

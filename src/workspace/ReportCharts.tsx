@@ -1,15 +1,7 @@
 import ReportPanel, { usePlotSize } from "./ReportPanel";
 import { useId, useState, type CSSProperties } from "react";
 import { bureauName } from "../../packages/shared/catalog";
-interface Row {
-  bureau: string;
-  region: string;
-  status: string;
-  intake: string;
-  received_at: string;
-  due_at: string;
-  updated_at: string;
-}
+import type { Analytics } from "../../packages/shared/reports";
 const colours = ["#2b6cbe", "#e76b30", "#879aa9", "#82977e"];
 const format = (n: number) => String(n).padStart(2, "0");
 function Panel({
@@ -43,9 +35,7 @@ function Panel({
   );
 }
 
-export default function ReportCharts({ rows }: { rows: Row[] }) {
-  const approved = rows.filter((r) => r.intake === "Approved"),
-    active = approved.filter((r) => r.status !== "Disposed");
+export default function ReportCharts({ data }: { data: Analytics }) {
   const [hover, setHover] = useState<number | null>(null),
     [segment, setSegment] = useState<number | null>(null);
   const graphId = useId();
@@ -57,25 +47,7 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
   const ageBottom = agePlot.height - 28,
     ageHeight = agePlot.height - 56,
     ageStep = (agePlot.width - 32) / 4;
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  today.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
-  const weeks = Array.from({ length: 8 }, (_, i) => {
-    const start = new Date(today.getTime() - (7 - i) * 7 * 86400000),
-      end = new Date(start.getTime() + 7 * 86400000);
-    return {
-      label: start.toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        timeZone: "UTC",
-      }),
-      count: rows.filter(
-        (r) =>
-          Date.parse(r.received_at) >= +start &&
-          Date.parse(r.received_at) < +end,
-      ).length,
-    };
-  });
+  const weeks = data.weeks;
   const max = Math.max(4, ...weeks.map((w) => w.count)),
     points = weeks.map((w, i) => ({
       x: 36 + i * ((right - 36) / 7),
@@ -85,17 +57,11 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
   const line = points
     .map((p, i) => (i ? "L" : "M") + p.x + "," + p.y)
     .join(" ");
-  const statuses = [
-    "Pending",
-    "Under process",
-    "Awaiting information",
-    "Disposed",
-  ].map((label, i) => ({
-    label,
-    count: approved.filter((r) => r.status === label).length,
+  const statuses = data.statuses.map((status, i) => ({
+    ...status,
     colour: colours[i],
   }));
-  const total = approved.length;
+  const total = data.summary.approved;
   let offset = 0;
   const arcs = statuses.map((s) => {
     const length = total ? (s.count / total) * 100 : 0;
@@ -103,38 +69,14 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
     offset += length;
     return arc;
   });
-  const bureaus = [...new Set(approved.map((r) => r.bureau))]
-    .map((name) => ({
-      name,
-      active: active.filter((r) => r.bureau === name).length,
-      disposed: approved.filter(
-        (r) => r.bureau === name && r.status === "Disposed",
-      ).length,
-    }))
-    .sort((a, b) => b.active + b.disposed - (a.active + a.disposed));
-  const maxBureau = Math.max(1, ...bureaus.map((b) => b.active + b.disposed));
-  const ages = [
-    [0, 7],
-    [8, 30],
-    [31, 90],
-    [91, Infinity],
-  ].map(([lo, hi]) => ({
-    label: hi === Infinity ? "91+" : `${lo}–${hi}`,
-    count: active.filter((r) => {
-      const age = Math.max(
-        0,
-        Math.floor((Date.now() - Date.parse(r.received_at)) / 86400000),
-      );
-      return age >= lo && age <= hi;
-    }).length,
-  }));
-  const maxAge = Math.max(1, ...ages.map((a) => a.count));
-  const regions = [...new Set(approved.map((r) => r.region))]
-    .map((name) => ({
-      name,
-      count: approved.filter((r) => r.region === name).length,
-    }))
-    .sort((a, b) => b.count - a.count);
+  const bureaus = data.bureaus,
+    maxBureau = Math.max(
+      1,
+      ...bureaus.map((bureau) => bureau.active + bureau.disposed),
+    ),
+    ages = data.ages,
+    maxAge = Math.max(1, ...ages.map((age) => age.count)),
+    regions = data.regions;
   return (
     <>
       <Panel title="Weekly intake" className="ws-chart-wide">

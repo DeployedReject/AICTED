@@ -9,6 +9,10 @@ export interface Env {
   BOOTSTRAP_TOKEN?: string;
   NOTIFICATIONS?: Fetcher;
   DOCUMENTS?: Fetcher;
+  INSTITUTIONS?: Fetcher;
+  HANDOFFS?: Fetcher;
+  REPORTS?: Fetcher;
+  LIVE?: Fetcher;
   CASEWORK: Fetcher;
   RELEVANCE: Fetcher;
   ASSETS: Fetcher;

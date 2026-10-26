@@ -39,7 +39,10 @@ export function pgQuery(input: Query): Query {
     "lower($1) LIKE lower(?)",
   );
   sql = sql
-    .replace(/email=\? COLLATE NOCASE/g, "lower(email)=lower(?)")
+    .replace(
+      /([a-zA-Z_][a-zA-Z0-9_.]*)=\? COLLATE NOCASE/g,
+      "lower($1)=lower(?)",
+    )
     .replace(/INSERT OR IGNORE INTO/g, "INSERT INTO");
   if (input.sql.includes("INSERT OR IGNORE") && !/ON CONFLICT/i.test(sql))
     sql += " ON CONFLICT DO NOTHING";
@@ -68,6 +71,11 @@ export function pgQuery(input: Query): Query {
       start += next.length;
     } else start = end;
   }
+  sql = sql
+    .replace(/\bMIN\(([^(),]+),([^(),]+)\)/g, "LEAST($1,$2)")
+    .replace(/\bMAX\(([^(),]+),([^(),]+)\)/g, "GREATEST($1,$2)")
+    .replace(/\bAS overlaps\b/gi, 'AS "overlaps"')
+    .replace(/\) overlaps(?=,|\s|$)/g, ') "overlaps"');
   return { sql: placeholders(sql), params };
 }
 export class Connection {

@@ -19,11 +19,15 @@ export default function Overlaps({
   open: (id: string) => void;
 }) {
   const [data, setData] = useState<Match[] | null>(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [cursor, setCursor] = useState(""),
+    [next, setNext] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     Promise.all([
-      api<{ overlaps: Match[] }>("/overlaps"),
+      api<{ overlaps: Match[]; next: string | null }>(
+        "/overlaps?cursor=" + encodeURIComponent(cursor),
+      ),
       new Promise((resolve) =>
         setTimeout(
           resolve,
@@ -32,7 +36,10 @@ export default function Overlaps({
       ),
     ])
       .then(([r]) => {
-        if (active) setData(r.overlaps);
+        if (active) {
+          setData(r.overlaps);
+          setNext(r.next);
+        }
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -40,7 +47,7 @@ export default function Overlaps({
     return () => {
       active = false;
     };
-  }, [version]);
+  }, [version, cursor]);
   if (error)
     return (
       <p role="alert" className="ws-error">
@@ -94,6 +101,12 @@ export default function Overlaps({
         </div>
       ) : (
         <div className="ws-empty">No active cross-Bureau overlaps.</div>
+      )}
+      {(cursor || next) && (
+        <div className="ws-pagination">
+          {cursor && <button onClick={() => setCursor("")}>First page</button>}
+          {next && <button onClick={() => setCursor(next)}>Next page</button>}
+        </div>
       )}
     </>
   );

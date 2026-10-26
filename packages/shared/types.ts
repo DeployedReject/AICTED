@@ -1,4 +1,4 @@
-export type UserRole = "official" | "manager" | "it";
+export type UserRole = "official" | "manager" | "it" | "institution";
 export interface Official {
   id: string;
   name: string;
@@ -8,6 +8,7 @@ export interface Official {
   manager_id: string | null;
   is_demo: number;
   report_scope: "personal" | "team" | "bureau";
+  institution_id?: string;
   email?: string;
   active?: number;
 }
@@ -22,6 +23,11 @@ export interface Institution {
   state: string;
   region: string;
   is_demo: number;
+  address?: string;
+  district?: string;
+  postal_code?: string;
+  aishe_code?: string;
+  active?: number;
   active_cases?: number;
   past_cases?: number;
 }
@@ -51,6 +57,9 @@ export interface CaseRecord {
   is_demo: number;
   can_act?: boolean;
   can_comment?: boolean;
+  institution_account_id?: string | null;
+  cancellation_state?: string;
+  institution_escalation?: string;
   approval_reason?: string;
 }
 export interface CaseEvent {
@@ -63,6 +72,7 @@ export interface CaseEvent {
   bureau: string;
   body: string;
   created_at: string;
+  is_public?: number;
 }
 export interface Coordination {
   id: string;
@@ -95,10 +105,12 @@ export interface Tag {
   group_name: string;
 }
 export interface Summary {
+  unread_notices?: number;
   total: number;
   pending: number;
   processing: number;
   disposed: number;
+  transferred: number;
   overdue: number;
   escalated: number;
   proposed: number;
@@ -120,6 +132,7 @@ export interface Bootstrap {
 export interface CaseDetail {
   case: CaseRecord;
   events: CaseEvent[];
+  events_next?: string | null;
   coordination: Coordination[];
   candidates: { bureau: string }[];
   relations: {

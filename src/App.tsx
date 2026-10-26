@@ -27,7 +27,11 @@ function readTheme() {
 export default function App() {
   const isIT = location.pathname.replace(/\/$/, "") === "/it";
   const [theme, setTheme] = useState(readTheme);
-  const [audience, setAudience] = useState<Audience>("official");
+  const [audience, setAudience] = useState<Audience>(() =>
+    new URLSearchParams(location.search).get("portal") === "institution"
+      ? "institution"
+      : "official",
+  );
   const [view, setView] = useState<View>("login");
   const [showPassword, setShowPassword] = useState(false);
   const [notice, setNotice] = useState("");
@@ -86,10 +90,20 @@ export default function App() {
         id,
         password,
         designation,
-        portal: isIT ? "it" : "official",
+        portal: isIT
+          ? "it"
+          : audience === "institution"
+            ? "institution"
+            : "official",
       });
       sessionStorage.removeItem("demo-actor");
-      location.assign(isIT ? "/it/workspace" : "/workspace");
+      location.assign(
+        isIT
+          ? "/it/workspace"
+          : audience === "institution"
+            ? "/institution/workspace"
+            : "/workspace",
+      );
     } catch (error) {
       setNotice((error as Error).message);
     } finally {
@@ -104,16 +118,12 @@ export default function App() {
       setNotice("");
       void api<{ message: string }>("/auth/recover", {
         email: data.get("email"),
+        portal: isIT ? "it" : audience,
+        account_id: data.get("account_id"),
       })
         .then((r) => setNotice(r.message))
         .catch((e) => setNotice(e.message))
         .finally(() => setBusy(false));
-      return;
-    }
-    if (audience === "institution") {
-      setNotice(
-        "Institution accounts must be provisioned by IT. Contact your administrator.",
-      );
       return;
     }
     const data = new FormData(event.currentTarget);
@@ -136,8 +146,8 @@ export default function App() {
       text: "Your institution’s authorised representative will need an account. Contact your AICTE administrator to request access.",
     },
     admin: {
-      title: "IT administration",
-      text: "Sign in through IT administration using your assigned ID and password.",
+      title: "Administration Panel",
+      text: "Sign in through the Administration Panel using your assigned ID and password.",
     },
   };
 
@@ -168,8 +178,11 @@ export default function App() {
         <div className="login-main" id="login-content">
           <div className="form-container">
             <div className="intro">
+              <span className="portal-section-label">
+                {isIT ? "Administration Panel" : "Main Login Portal"}
+              </span>
               <h1 tabIndex={-1} ref={title}>
-                {view === "login" ? (isIT ? "IT" : "Sign in") : "Recovery"}
+                {view === "login" ? "Sign in" : "Recovery"}
               </h1>
             </div>
 
@@ -348,6 +361,20 @@ export default function App() {
               </>
             ) : (
               <form className="login-form recovery-form" onSubmit={submit}>
+                {audience === "institution" && !isIT && (
+                  <div className="field">
+                    <label htmlFor="recovery-account">
+                      Institution account ID
+                    </label>
+                    <input
+                      id="recovery-account"
+                      name="account_id"
+                      required
+                      autoComplete="username"
+                      maxLength={80}
+                    />
+                  </div>
+                )}
                 <div className="field">
                   <label htmlFor="recovery-email">Email address</label>
                   <input
@@ -405,8 +432,8 @@ export default function App() {
             Local vectors · ODbL
           </a>
         </span>
-        <a className="admin-link" href={isIT ? "/" : "/it"}>
-          {isIT ? "Officials" : "IT"}
+        <a className="admin-link portal-entry-label" href={isIT ? "/" : "/it"}>
+          {isIT ? "Main Login Portal" : "Administration Panel"}
           <Icon name="arrow" size={13} />
         </a>
       </footer>

@@ -1,3 +1,8 @@
+import useLiveUpdates from "./useLiveUpdates";
+import type { Analytics } from "../../packages/shared/reports";
+import CaseNotices from "./CaseNotices";
+import Handoffs, { CaseHandoff } from "./Handoffs";
+import CaseHistory from "./CaseHistory";
 import Documents, { FolderField } from "./Documents";
 import { driveFolder } from "../../packages/shared/drive";
 import InstitutionPicker from "./InstitutionPicker";
@@ -6,7 +11,7 @@ import AssignCase from "./AssignCase";
 import ManagerHome from "./ManagerHome";
 import DatabaseSettings from "./DatabaseSettings";
 import { SetupGuide } from "./ITHelp";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type {
   Bootstrap,
@@ -92,7 +97,9 @@ function useLoad<T>(path: string, version = 0) {
     const wait = new Promise((resolve) =>
       setTimeout(
         resolve,
-        reduced() || path === "/bootstrap" || path === "/reports" ? 0 : 1000,
+        reduced() || path === "/bootstrap" || path.startsWith("/reports")
+          ? 0
+          : 1000,
       ),
     );
     Promise.all([api<T>(path), wait])
@@ -202,6 +209,7 @@ export default function Workspace() {
     [creating, setCreating] = useState(false);
   const { data: boot, error } = useLoad<Bootstrap>("/bootstrap", version);
   const [casesView, setCasesView] = useState("all");
+  const [caseAttention, setCaseAttention] = useState("");
   const [managerTab, setManagerTab] = useState("overview"),
     [approvalView, setApprovalView] = useState("proposed");
   const pageLabel = (p: string) =>
@@ -217,7 +225,8 @@ export default function Workspace() {
         Team: "Team workload",
       }) as Record<string, string>
     )[p] || p;
-  const refresh = () => setVersion((v) => v + 1);
+  const refresh = useCallback(() => setVersion((v) => v + 1), []);
+  useLiveUpdates(refresh);
   function setSelected(value: string | null) {
     const url = new URL(location.href);
     if (value) url.searchParams.set("case", value);
@@ -267,6 +276,9 @@ export default function Workspace() {
           </span>
         </a>
 
+        <span className="ws-portal-badge">
+          {isIT ? "Administration Panel" : "Official Workspace"}
+        </span>
         <SlidingNav selected={page === "Cases" ? "Cases-" + casesView : page}>
           {(
             (isIT
@@ -297,7 +309,10 @@ export default function Workspace() {
                 key={p}
                 onClick={() => {
                   setPage(p);
-                  if (p === "Cases") setCasesView("all");
+                  if (p === "Cases") {
+                    setCasesView("all");
+                    setCaseAttention("");
+                  }
                   setSelected(null);
                   setCreating(false);
                 }}
@@ -330,6 +345,9 @@ export default function Workspace() {
                     ],
                     ["coordination", "Coordination requests"],
                     ["overlaps", "Bureau overlaps"],
+                    ...(user.role === "manager"
+                      ? [["handoffs", "Bureau transfers"]]
+                      : []),
                   ].map(([view, label]) => (
                     <button
                       key={view}
@@ -337,6 +355,7 @@ export default function Workspace() {
                       className={casesView === view ? "active" : ""}
                       onClick={() => {
                         setCasesView(view);
+                        setCaseAttention("");
                         setSelected(null);
                         setCreating(false);
                       }}
@@ -474,6 +493,17 @@ export default function Workspace() {
                       <span>Overlaps</span>
                       <b>{boot.summary.overlaps}</b>
                     </button>
+                    <button
+                      className="ws-escalated"
+                      onClick={() => {
+                        setPage("Cases");
+                        setCasesView("all");
+                        setCaseAttention("escalated");
+                      }}
+                    >
+                      <span>Escalated</span>
+                      <b>{boot.summary.escalated}</b>
+                    </button>
                     <span className="ws-due-count">
                       <span>Due soon</span>
                       <b>{boot.summary.due_soon}</b>
@@ -483,10 +513,12 @@ export default function Workspace() {
                 {page === "My Work" && user.role === "official" && (
                   <div className="ws-metrics">
                     {[
-                      ["Assigned cases", boot.summary.total],
+                      ["Total cases", boot.summary.total],
+                      ["Pending", boot.summary.pending],
                       ["In progress", boot.summary.processing],
+                      ["Disposed", boot.summary.disposed],
                       ["Overdue", boot.summary.overdue],
-                      ["Escalated", boot.summary.escalated],
+                      ["Transferred", boot.summary.transferred],
                     ].map(([label, n]) => (
                       <div key={label}>
                         <span>{label}</span>
@@ -572,9 +604,12 @@ export default function Workspace() {
                     </ManagerHome>
                   )}
                 {((page === "My Work" && user.role !== "manager") ||
-                  (page === "Cases" && casesView !== "overlaps")) && (
+                  (page === "Cases" &&
+                    casesView !== "overlaps" &&
+                    casesView !== "handoffs")) && (
                   <CaseList
-                    key={page + casesView}
+                    key={page + casesView + caseAttention}
+                    initialAttention={caseAttention}
                     initialView={page === "My Work" ? "assigned" : casesView}
                     boot={boot}
                     version={version}
@@ -597,7 +632,18 @@ export default function Workspace() {
                 {page === "Cases" && casesView === "overlaps" && (
                   <Overlaps version={version} open={setSelected} />
                 )}
-                {page === "Reports" && <Reports version={version} />}
+                {page === "Cases" &&
+                  casesView === "handoffs" &&
+                  user.role === "manager" && (
+                    <Handoffs
+                      boot={boot}
+                      version={version}
+                      open={setSelected}
+                    />
+                  )}
+                {page === "Reports" && (
+                  <Reports version={version} boot={boot} />
+                )}
                 {isIT && page === "Database" && <DatabaseSettings />}
                 {isIT && page === "Guide" && <SetupGuide />}
                 {isIT && page === "Tags" && <TagSettings onSaved={() => {}} />}
@@ -623,8 +669,10 @@ function CaseList({
   all,
   refresh,
   initialView,
+  initialAttention = "",
 }: {
   initialView?: string;
+  initialAttention?: string;
   boot: Bootstrap;
   version: number;
   open: (id: string) => void;
@@ -643,7 +691,7 @@ function CaseList({
     [from, setFrom] = useState(""),
     [to, setTo] = useState(""),
     [cursor, setCursor] = useState(""),
-    [attention, setAttention] = useState("");
+    [attention, setAttention] = useState(initialAttention);
   useEffect(() => {
     const timer = setTimeout(() => setSearch(q), 350);
     return () => clearTimeout(timer);
@@ -992,7 +1040,7 @@ function Board({
   const c = data.case,
     canReview =
       boot.user.role === "manager" &&
-      c.created_by !== boot.user.id &&
+      (c.created_by !== boot.user.id || !!c.institution_account_id) &&
       c.intake === "Submitted";
   return (
     <>
@@ -1031,6 +1079,64 @@ function Board({
             <p>{c.next_action}</p>
             {c.approval_reason && <p>Review note: {c.approval_reason}</p>}
           </section>
+          {boot.user.role === "manager" &&
+            c.can_act &&
+            (c.cancellation_state === "Awaiting review" ||
+              c.institution_escalation === "Awaiting review") && (
+              <section className="ws-card">
+                <h2>Institution requests</h2>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void send(
+                      "/institution-response",
+                      Object.fromEntries(new FormData(event.currentTarget)),
+                    );
+                  }}
+                >
+                  <label>
+                    Request
+                    <select name="kind">
+                      {c.cancellation_state === "Awaiting review" && (
+                        <option value="cancellation">Cancellation</option>
+                      )}
+                      {c.institution_escalation === "Awaiting review" && (
+                        <option value="escalation">Escalation</option>
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    Decision
+                    <select name="decision">
+                      <option>Approved</option>
+                      <option>Rejected</option>
+                    </select>
+                  </label>
+                  <label>
+                    Decision note
+                    <textarea
+                      name="reason"
+                      minLength={3}
+                      maxLength={2000}
+                      required
+                    />
+                  </label>
+                  <label className="ws-checkbox">
+                    <input type="checkbox" name="is_public" value="1" />
+                    Share decision note with the institution
+                  </label>
+                  <button className="ws-primary" disabled={busy}>
+                    Review request
+                  </button>
+                </form>
+              </section>
+            )}
+          {boot.user.role === "manager" &&
+            c.can_act &&
+            c.intake === "Approved" &&
+            c.status !== "Disposed" && (
+              <CaseHandoff record={c} boot={boot} refresh={refresh} />
+            )}
           <Documents record={c} onChange={refresh} />
           {canReview && (
             <section className="ws-card">
@@ -1046,6 +1152,8 @@ function Board({
                   void send("/decision", {
                     decision: f.get("decision"),
                     reason: f.get("reason"),
+                    due_at: f.get("due_at"),
+                    is_public: f.get("is_public"),
                   });
                 }}
               >
@@ -1066,79 +1174,81 @@ function Board({
                     maxLength={1000}
                   />
                 </label>
+                {c.institution_account_id && (
+                  <>
+                    <label>
+                      Expected disposal date
+                      <input
+                        type="date"
+                        name="due_at"
+                        defaultValue={c.due_at?.slice(0, 10)}
+                      />
+                    </label>
+                    <label className="ws-checkbox">
+                      <input type="checkbox" name="is_public" value="1" />
+                      Share this decision note with the institution
+                    </label>
+                  </>
+                )}
                 <button className="ws-primary" disabled={busy}>
                   Save decision
                 </button>
               </form>
             </section>
           )}
-          {c.intake === "Returned" && c.created_by === boot.user.id && (
-            <section className="ws-card">
-              <h2>Update returned proposal</h2>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const f = new FormData(e.currentTarget);
-                  void send("/resubmit", {
-                    description: f.get("description"),
-                    next_action: f.get("next_action"),
-                  });
-                }}
-              >
-                <label>
-                  Description
-                  <textarea
-                    name="description"
-                    defaultValue={c.description}
-                    required
-                    minLength={20}
-                    maxLength={5000}
-                  />
-                </label>
-                <label>
-                  Next action
-                  <input
-                    name="next_action"
-                    defaultValue={c.next_action}
-                    required
-                    minLength={3}
-                    maxLength={300}
-                  />
-                </label>
-                <button className="ws-primary" disabled={busy}>
-                  Resubmit for review
-                </button>
-              </form>
-            </section>
-          )}
+          {c.intake === "Returned" &&
+            !c.institution_account_id &&
+            c.created_by === boot.user.id && (
+              <section className="ws-card">
+                <h2>Update returned proposal</h2>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const f = new FormData(e.currentTarget);
+                    void send("/resubmit", {
+                      description: f.get("description"),
+                      next_action: f.get("next_action"),
+                    });
+                  }}
+                >
+                  <label>
+                    Description
+                    <textarea
+                      name="description"
+                      defaultValue={c.description}
+                      required
+                      minLength={20}
+                      maxLength={5000}
+                    />
+                  </label>
+                  <label>
+                    Next action
+                    <input
+                      name="next_action"
+                      defaultValue={c.next_action}
+                      required
+                      minLength={3}
+                      maxLength={300}
+                    />
+                  </label>
+                  <button className="ws-primary" disabled={busy}>
+                    Resubmit for review
+                  </button>
+                </form>
+              </section>
+            )}
           <section className="ws-card">
             <h2>Updates</h2>
             <p className="ws-hint">
               Comments and formal updates, in time order. History cannot be
               edited.
             </p>
-            <div className="ws-timeline">
-              {[...data.events].reverse().map((e) => (
-                <article
-                  className={e.kind === "comment" ? "comment" : "formal"}
-                  key={e.id}
-                >
-                  <div>
-                    <b>
-                      {e.kind === "comment"
-                        ? e.actor_name
-                        : e.kind.replaceAll("_", " ")}
-                    </b>
-                    <time>{stamp(e.created_at)}</time>
-                  </div>
-                  <small>
-                    {e.actor_name} · {e.designation} · {bureauName(e.bureau)}
-                  </small>
-                  <p className="ws-pre">{e.body}</p>
-                </article>
-              ))}
-            </div>
-            {data.events.length === 60 && <p>Showing the latest 60 updates.</p>}
+            <CaseHistory
+              key={id + "-" + version}
+              caseId={id}
+              initial={data.events}
+              next={data.events_next}
+            />
             {c.can_comment && (
               <form
                 onSubmit={async (e) => {
@@ -1147,6 +1257,7 @@ function Board({
                   if (
                     await send("/comments", {
                       body: new FormData(form).get("body"),
+                      is_public: new FormData(form).get("is_public"),
                     })
                   )
                     form.reset();
@@ -1160,6 +1271,10 @@ function Board({
                     maxLength={3000}
                     placeholder="What changed? What happens next?"
                   />
+                </label>
+                <label className="ws-checkbox">
+                  <input type="checkbox" name="is_public" value="1" />
+                  Share this comment with the institution
                 </label>
                 <button disabled={busy} className="ws-primary">
                   Post update
@@ -1701,6 +1816,18 @@ function InstitutionHistory({
     <section className="ws-section">
       <h2>{institution.name}</h2>
       <p>Active and past cases · {institution.permanent_id}</p>
+      <p>
+        {[
+          institution.address,
+          institution.city,
+          institution.district,
+          institution.state,
+          institution.postal_code,
+        ]
+          .filter(Boolean)
+          .join(", ")}
+      </p>
+      {institution.aishe_code && <p>AISHE: {institution.aishe_code}</p>}
       {error ? (
         <ErrorBox text={error} />
       ) : !data ? (
@@ -1723,7 +1850,7 @@ function InstitutionHistory({
     </section>
   );
 }
-function Messages({
+function Conversations({
   boot,
   version,
   refresh,
@@ -1821,123 +1948,170 @@ function Messages({
     </div>
   );
 }
-interface ReportRow {
-  disposed_at?: string | null;
-  transfers: number;
-  overlaps: number;
-  bureau: string;
-  region: string;
-  status: string;
-  intake: string;
-  escalated: number;
-  received_at: string;
-  due_at: string;
-  updated_at: string;
-}
-function Reports({ version }: { version: number }) {
-  const { data, error } = useLoad<{
-    rows: ReportRow[];
-    as_of: string;
-    limited: boolean;
-    scope: string;
-  }>("/reports", version);
-  if (error) return <ErrorBox text={error} />;
-  if (!data) return <Skeleton />;
-  const approved = data.rows.filter((r) => r.intake === "Approved"),
-    active = approved.filter((r) => r.status !== "Disposed"),
-    now = new Date().toISOString();
-  function download() {
-    const fields = [
-      "bureau",
-      "region",
-      "status",
-      "intake",
-      "escalated",
-      "received_at",
-      "due_at",
-      "updated_at",
-    ] as const;
-    const csv = [
-      fields.join(","),
-      ...data!.rows.map((r) =>
-        fields
-          .map(
-            (f) =>
-              '"' +
-              String(r[f])
-                .replace(/^[=+@-]/, "'")
-                .replaceAll('"', '""') +
-              '"',
-          )
-          .join(","),
-      ),
-    ].join("\r\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "aicte-scoped-report.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+function Reports({ version, boot }: { version: number; boot: Bootstrap }) {
+  const [query, setQuery] = useState("");
+  const { data, error } = useLoad<Analytics>(
+    "/reports" + (query ? "?" + query : ""),
+    version,
+  );
   return (
     <>
-      <div className="ws-report-toolbar">
-        <span>
-          {data.scope} · {stamp(data.as_of)} · {data.rows.length} records
-          {data.limited ? " · Partial" : ""}
-        </span>
-        <button onClick={download}>Export</button>
-      </div>
-      <div className="ws-metrics ws-report-metrics">
-        {[
-          ["Active", active.length],
-          ["Disposed", approved.length - active.length],
-          ["Overdue", active.filter((r) => r.due_at < now).length],
-          ["Transferred", data.rows.filter((r) => r.transfers > 0).length],
-          ["Overlaps", data.rows.filter((r) => r.overlaps).length],
-          ["Review", data.rows.filter((r) => r.intake === "Submitted").length],
-        ].map(([label, n]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <strong>{Number(n)}</strong>
-            <small>
-              {
-                (
-                  {
-                    Active: "Approved cases still open.",
-                    Disposed: "Approved cases with a recorded disposal.",
-                    Overdue: "Active cases past their due date.",
-                    Transferred: "Cases with at least one recorded transfer.",
-                    Overlaps:
-                      "Active cases at institutions with work in another bureau.",
-                    Review: "Submissions awaiting an intake decision.",
-                  } as Record<string, string>
-                )[String(label)]
-              }
-            </small>
+      <form
+        className="ws-card ws-report-filters"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const values = new FormData(event.currentTarget),
+            params = new URLSearchParams();
+          for (const [key, value] of values)
+            if (value) params.set(key, String(value));
+          setQuery(params.toString());
+        }}
+      >
+        <InstitutionPicker name="institution" label="Filter institution" />
+        <label>
+          Received from
+          <input type="date" name="from" />
+        </label>
+        <label>
+          Received to
+          <input type="date" name="to" />
+        </label>
+        <label>
+          Bureau
+          <select name="bureau" defaultValue="">
+            <option value="">All permitted bureaus</option>
+            {boot.units.map((unit) => (
+              <option key={unit.code} value={unit.code}>
+                {unit.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Region
+          <input name="region" placeholder="AICTE region" maxLength={80} />
+        </label>
+        <label>
+          Status
+          <select name="status" defaultValue="">
+            <option value="">All statuses</option>
+            {[
+              "Pending",
+              "Under process",
+              "Awaiting information",
+              "Disposed",
+            ].map((status) => (
+              <option key={status}>{status}</option>
+            ))}
+          </select>
+        </label>
+        <button className="ws-primary">Apply filters</button>
+      </form>
+      {error ? (
+        <ErrorBox text={error} />
+      ) : !data ? (
+        <Skeleton />
+      ) : (
+        <>
+          <div className="ws-report-toolbar">
+            <span>
+              {data.scope} · {stamp(data.as_of)} · {data.summary.total} records
+            </span>
+            <a
+              className="ws-export-button"
+              href={"/api/reports/export" + (query ? "?" + query : "")}
+            >
+              Export CSV
+            </a>
           </div>
-        ))}
+          <div className="ws-metrics ws-report-metrics">
+            {[
+              ["Active", data.summary.active, "Approved cases still open."],
+              [
+                "Disposed",
+                data.summary.disposed,
+                "Approved cases currently closed.",
+              ],
+              [
+                "Overdue",
+                data.summary.overdue,
+                "Open cases past their expected disposal date.",
+              ],
+              [
+                "Transferred",
+                data.summary.transferred,
+                "Cases with a recorded ownership transfer.",
+              ],
+              [
+                "Overlaps",
+                data.summary.overlaps,
+                `${data.summary.duplicates} cases linked as confirmed duplicates.`,
+              ],
+              [
+                "Review",
+                data.summary.review,
+                "Submissions awaiting intake review.",
+              ],
+            ].map(([label, value, description]) => (
+              <div key={String(label)}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+                <small>{description}</small>
+              </div>
+            ))}
+          </div>
+          <div className="ws-report-note">
+            <span title="Currently disposed approved cases divided by all approved cases in the filtered workload.">
+              Disposal rate
+            </span>
+            <b>{data.summary.disposal_rate}%</b>
+            <span>Ageing = days since receipt</span>
+          </div>
+          <div className="ws-report-grid">
+            <ReportCharts data={data} />
+            <ReportPeriods data={data} />
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function Messages(props: {
+  boot: Bootstrap;
+  version: number;
+  refresh: () => void;
+  open: (id: string) => void;
+}) {
+  const [view, setView] = useState("conversations");
+  return (
+    <>
+      <div className="ws-tabs">
+        <button
+          className={view === "conversations" ? "active" : ""}
+          onClick={() => setView("conversations")}
+        >
+          Conversations
+        </button>
+        <button
+          className={view === "notices" ? "active" : ""}
+          onClick={() => setView("notices")}
+        >
+          Case notices{" "}
+          {props.boot.summary.unread_notices
+            ? `(${props.boot.summary.unread_notices})`
+            : ""}
+        </button>
       </div>
-      <div className="ws-report-note">
-        <span title="Disposed approved cases divided by all approved cases in this report. This is a snapshot, not a monthly resolution rate.">
-          Disposal rate
-        </span>
-        <b>
-          {approved.length
-            ? Math.round(
-                ((approved.length - active.length) / approved.length) * 100,
-              )
-            : 0}
-          %
-        </b>
-        <span title="Elapsed days from the original received date for cases still active. Overdue separately compares the due date.">
-          Ageing = days since receipt
-        </span>
-      </div>
-      <div className="ws-report-grid">
-        <ReportCharts rows={data.rows} />
-        <ReportPeriods rows={data.rows} />
-      </div>
+      {view === "notices" ? (
+        <CaseNotices
+          version={props.version}
+          open={props.open}
+          refresh={props.refresh}
+        />
+      ) : (
+        <Conversations {...props} />
+      )}
     </>
   );
 }

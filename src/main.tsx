@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { lazy, Suspense } from "react";
 const IdentityPages = lazy(() => import("./IdentityPages"));
+const InstitutionPortal = lazy(() => import("./institution/Portal"));
 const Workspace = lazy(() => import("./workspace/Workspace"));
 import "./styles.css";
 
@@ -18,6 +19,21 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         }
       >
         <IdentityPages />
+      </Suspense>
+    ) : location.pathname.startsWith("/institution/workspace") ? (
+      <Suspense
+        fallback={
+          <div
+            className="boot-skeleton"
+            role="status"
+            aria-label="Loading institution portal"
+          >
+            <i />
+            <i />
+          </div>
+        }
+      >
+        <InstitutionPortal />
       </Suspense>
     ) : location.pathname.startsWith("/workspace") ||
       location.pathname.startsWith("/it/workspace") ? (

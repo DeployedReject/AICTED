@@ -106,8 +106,12 @@ const help: Record<
     intro: "Register each institution once using its AICTE Permanent ID.",
     steps: [
       "Check whether the institution already exists by name and Permanent ID.",
-      "Enter its official name, AICTE Permanent ID, city, state and region.",
-      "Use the same Permanent ID for later case intake.",
+      "Enter its official name, AICTE Permanent ID, full address, district, postal code, state and region. Record an AISHE code separately when available.",
+      "Use the same Permanent ID for later case intake. Select a record to edit it instead of creating a duplicate.",
+      "Open Portal accounts to create a representative account tied to that institution. Share its initial password privately. Disabling or changing the account ends its existing sessions.",
+      "Open Intake routing and choose a verified manager for each receiving bureau. Only configured bureaus appear on the institution’s case form.",
+      "Representatives see their institution’s submitted cases, formal updates, and comments explicitly shared with them. Internal investigations and private staff comments stay hidden.",
+      "Escalation and cancellation requests go to the responsible manager. A disposed case accepts one outcome review per representative. Google Drive permissions must be granted separately.",
     ],
     fields: [
       [

@@ -119,10 +119,10 @@ export class DatabaseRouter extends DurableObject<DatabaseEnv> {
           q("SELECT version FROM app_schema ORDER BY version DESC LIMIT 1"),
         ])
       )[0].results[0];
-      if (Number(version?.version) !== 11)
+      if (Number(version?.version) !== 15)
         fail(
           409,
-          "Schema version 11 is required. Initialize an empty destination or follow Database help.",
+          "Schema version 15 is required. Initialize an empty destination or follow Database help.",
         );
       if (p.source === "postgres") {
         const collation = (
@@ -160,10 +160,10 @@ export class DatabaseRouter extends DurableObject<DatabaseEnv> {
       ]);
       const triggerQuery =
         p.source === "postgres"
-          ? "SELECT COUNT(*) n FROM pg_trigger WHERE NOT tgisinternal AND tgname IN('immutable_events','immutable_audit','case_event_mail')"
-          : "SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name IN('immutable_events_update','immutable_events_delete','admin_audit_immutable_update','admin_audit_immutable_delete','official_search_insert','official_search_update','official_search_delete','case_event_mail')";
+          ? "SELECT COUNT(*) n FROM pg_trigger WHERE NOT tgisinternal AND tgname IN('immutable_events','immutable_audit','case_event_mail','event_actor_snapshot','institution_history')"
+          : "SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name IN('immutable_events_update','immutable_events_delete','admin_audit_immutable_update','admin_audit_immutable_delete','official_search_insert','official_search_update','official_search_delete','case_event_mail','event_actor_snapshot','institution_history_update','institution_history_delete')";
       const triggers = (await c.query([q(triggerQuery)]))[0].results[0];
-      if (Number(triggers.n) !== (p.source === "postgres" ? 3 : 8))
+      if (Number(triggers.n) !== (p.source === "postgres" ? 5 : 11))
         fail(
           409,
           "Required history, directory or email triggers are missing. Use the provided schema.",
@@ -420,6 +420,9 @@ export class DatabaseRouter extends DurableObject<DatabaseEnv> {
               await c.query([
                 q("PRAGMA defer_foreign_keys=ON"),
                 ...[
+                  "event_actor_snapshot",
+                  "institution_history_update",
+                  "institution_history_delete",
                   "immutable_events_update",
                   "immutable_events_delete",
                   "admin_audit_immutable_update",
@@ -577,9 +580,11 @@ export class DatabaseRouter extends DurableObject<DatabaseEnv> {
                         ? null
                         : row[key],
                     );
-                  const mutable = !["case_events", "admin_audit"].includes(
-                      table,
-                    ),
+                  const mutable = ![
+                      "case_events",
+                      "institution_events",
+                      "admin_audit",
+                    ].includes(table),
                     nonKey = columns.filter(
                       (key) => !keys[table].includes(key),
                     );
@@ -659,8 +664,28 @@ export class DatabaseRouter extends DurableObject<DatabaseEnv> {
         this.route.maintenance = 0;
         await this.saveRoute();
         await this.ctx.storage.put("job", job);
+        await this.publishRouteChange();
       }
     });
+  }
+  private async publishRouteChange() {
+    if (!this.env.LIVE) return;
+    for (const is_demo of [0, 1]) {
+      try {
+        await this.env.LIVE.fetch(
+          new Request("https://live/change", {
+            method: "POST",
+            headers: {
+              "x-internal-secret": this.env.INTERNAL_SECRET,
+              "x-actor": JSON.stringify({ id: "system", role: "it", is_demo }),
+            },
+            body: JSON.stringify({ path: "/api/database" }),
+          }),
+        );
+      } catch {
+        console.error("Database route refresh could not be delivered.");
+      }
+    }
   }
   private async finish(target: Profile) {
     await this.validate(target);
@@ -721,6 +746,7 @@ export class DatabaseRouter extends DurableObject<DatabaseEnv> {
         now(),
       )
       .run();
+    await this.publishRouteChange();
   }
 }
 export default {

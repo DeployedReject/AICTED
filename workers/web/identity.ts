@@ -100,40 +100,64 @@ export async function identity(
       });
     const address =
       typeof input.email === "string" ? input.email.trim().slice(0, 254) : "";
-    const controlIT = await (env.CONTROL_DB || env.DB)
-      .prepare(
-        `SELECT ${userColumns},email FROM officials WHERE email=? COLLATE NOCASE AND role='it' AND active=1 AND is_demo=0`,
-      )
-      .bind(address)
-      .first<Official & { email: string }>();
+    const institutionPortal = input.portal === "institution";
+    const controlIT =
+      input.portal === "it"
+        ? await (env.CONTROL_DB || env.DB)
+            .prepare(
+              `SELECT ${userColumns},email FROM officials WHERE email=? COLLATE NOCASE AND role='it' AND active=1 AND is_demo=0`,
+            )
+            .bind(address)
+            .first<Official & { email: string }>()
+        : null;
     if (controlIT) env = { ...env, DB: env.CONTROL_DB || env.DB };
-    const user =
-      controlIT ||
-      (await env.DB.prepare(
-        `SELECT ${userColumns},email FROM officials WHERE email=? COLLATE NOCASE AND active=1 AND is_demo=0`,
-      )
-        .bind(address)
-        .first<Official & { email: string }>());
+    const institutionAccount = institutionPortal
+      ? await env.DB.prepare(
+          "SELECT a.id,a.name,a.email,a.is_demo,a.institution_id FROM institution_accounts a JOIN institutions i ON i.id=a.institution_id WHERE a.id=? AND a.email=? COLLATE NOCASE AND a.active=1 AND a.is_demo=0 AND i.active=1",
+        )
+          .bind(String(input.account_id || "").slice(0, 80), address)
+          .first<Official & { email: string }>()
+      : null;
+    const user = institutionPortal
+      ? institutionAccount && {
+          ...institutionAccount,
+          role: "institution" as const,
+        }
+      : controlIT ||
+        (input.portal === "it"
+          ? null
+          : await env.DB.prepare(
+              `SELECT ${userColumns},email FROM officials WHERE email=? COLLATE NOCASE AND active=1 AND is_demo=0 AND role<>'it'`,
+            )
+              .bind(address)
+              .first<Official & { email: string }>());
     if (!user) return response();
+    const resetTable = institutionPortal
+        ? "institution_password_resets"
+        : "password_resets",
+      identityField = institutionPortal ? "account_id" : "official_id",
+      usageTable = institutionPortal
+        ? "institution_recovery_usage"
+        : "recovery_usage";
     const cfg = await runtime(env, 0);
     if (!cfg.recovery_enabled || !env.NOTIFICATIONS) return response();
     const quota = await env.DB.prepare(
-      "INSERT INTO recovery_usage(official_id,day,calls) VALUES(?,?,1) ON CONFLICT(official_id,day) DO UPDATE SET calls=calls+1 WHERE calls<3",
+      `INSERT INTO ${usageTable}(${identityField},day,calls) VALUES(?,?,1) ON CONFLICT(${identityField},day) DO UPDATE SET calls=${usageTable}.calls+1 WHERE ${usageTable}.calls<3`,
     )
       .bind(user.id, now().slice(0, 10))
       .run();
     if (!quota.meta.changes) return response();
     const token =
-        (user.role === "it" ? "it." : "") +
+        (user.role === "it" ? "it." : institutionPortal ? "institution." : "") +
         crypto.randomUUID() +
         crypto.randomUUID(),
       hash = await sha(token);
     await env.DB.batch([
       env.DB.prepare(
-        "DELETE FROM password_resets WHERE official_id=? AND expires_at<?",
+        `DELETE FROM ${resetTable} WHERE ${identityField}=? AND expires_at<?`,
       ).bind(user.id, Math.floor(Date.now() / 1000)),
       env.DB.prepare(
-        "INSERT INTO password_resets(token_hash,official_id,expires_at) VALUES(?,?,?)",
+        `INSERT INTO ${resetTable}(token_hash,${identityField},expires_at) VALUES(?,?,?)`,
       ).bind(hash, user.id, Math.floor(Date.now() / 1000) + 1800),
     ]);
     try {
@@ -144,22 +168,23 @@ export async function identity(
             "Content-Type": "application/json",
             "x-internal-secret": env.INTERNAL_SECRET,
             "x-actor": JSON.stringify(user),
+            ...(env.DB_GENERATION?.value
+              ? { "x-db-generation": env.DB_GENERATION.value }
+              : {}),
           },
           body: JSON.stringify({ token, request_id: hash }),
         }),
       );
       if (!result.ok) {
         await env.DB.prepare(
-          "UPDATE password_resets SET used=1 WHERE token_hash=?",
+          `UPDATE ${resetTable} SET used=1 WHERE token_hash=?`,
         )
           .bind(hash)
           .run();
         console.error("Recovery email was not accepted.");
       }
     } catch {
-      await env.DB.prepare(
-        "UPDATE password_resets SET used=1 WHERE token_hash=?",
-      )
+      await env.DB.prepare(`UPDATE ${resetTable} SET used=1 WHERE token_hash=?`)
         .bind(hash)
         .run();
       console.error("Recovery email service was unavailable.");
@@ -170,8 +195,15 @@ export async function identity(
     password = textField(input.password, "Password", 128, 12),
     hash = await sha(token),
     clock = Math.floor(Date.now() / 1000);
+  const institutionToken = token.startsWith("institution."),
+    resetTable = institutionToken
+      ? "institution_password_resets"
+      : "password_resets",
+    identityField = institutionToken ? "account_id" : "official_id",
+    accountTable = institutionToken ? "institution_accounts" : "officials",
+    sessionTable = institutionToken ? "institution_sessions" : "sessions";
   const reset = await env.DB.prepare(
-    "SELECT official_id FROM password_resets WHERE token_hash=? AND expires_at>? AND used=0",
+    `SELECT ${identityField} official_id FROM ${resetTable} WHERE token_hash=? AND expires_at>? AND used=0`,
   )
     .bind(hash, clock)
     .first<{ official_id: string }>();
@@ -179,7 +211,7 @@ export async function identity(
   const salt = crypto.randomUUID().replaceAll("-", "");
   const results = await env.DB.batch([
     env.DB.prepare(
-      "UPDATE officials SET password_salt=?,password_hash=? WHERE id=? AND active=1 AND EXISTS(SELECT 1 FROM password_resets WHERE token_hash=? AND used=0 AND expires_at>?)",
+      `UPDATE ${accountTable} SET password_salt=?,password_hash=? WHERE id=? AND active=1 AND EXISTS(SELECT 1 FROM ${resetTable} WHERE token_hash=? AND used=0 AND expires_at>?)`,
     ).bind(
       salt,
       await passwordHash(password, salt),
@@ -188,14 +220,16 @@ export async function identity(
       clock,
     ),
     env.DB.prepare(
-      "DELETE FROM sessions WHERE official_id=? AND EXISTS(SELECT 1 FROM password_resets WHERE token_hash=? AND used=0 AND expires_at>?)",
+      `DELETE FROM ${sessionTable} WHERE ${identityField}=? AND EXISTS(SELECT 1 FROM ${resetTable} WHERE token_hash=? AND used=0 AND expires_at>?)`,
     ).bind(reset.official_id, hash, clock),
     env.DB.prepare(
-      "UPDATE password_resets SET used=1 WHERE official_id=?",
+      `UPDATE ${resetTable} SET used=1 WHERE ${identityField}=?`,
     ).bind(reset.official_id),
   ]);
   if (!results[0].meta.changes)
     fail(410, "This reset link has expired or already been used.");
+  if (institutionToken)
+    return json({ ok: true, login: "/?portal=institution" });
   const user = await env.DB.prepare("SELECT role FROM officials WHERE id=?")
     .bind(reset.official_id)
     .first<{ role: string }>();

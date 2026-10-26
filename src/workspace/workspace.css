@@ -3397,3 +3397,62 @@
 .ws-tag-cases article small {
   color: var(--muted);
 }
+.ws-portal-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--orange) 7%, var(--surface));
+  font: 600 12px var(--font-ui);
+  color: var(--text);
+}
+.ws-sidebar > .ws-portal-badge {
+  margin: 0 4px 20px;
+}
+.ws-institution-case-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 16px;
+}
+.workspace .ws-institution-case-list > .ws-card {
+  display: block;
+  text-align: left;
+  padding: 18px;
+  margin: 0;
+}
+.ws-institution-case-list small {
+  display: block;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.ws-escalated {
+  color: #cf4c3f;
+  border-color: currentColor;
+}
+.workspace .ws-report-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+.ws-report-filters > label,
+.ws-report-filters > .ws-picker {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+.ws-export-button {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--input);
+  text-decoration: none;
+}
+.ws-report-grid .ws-quarterly-tile table {
+  table-layout: fixed;
+}
+.ws-report-grid .ws-quarterly-tile td:first-child {
+  min-width: 0;
+}
+.ws-report-grid .ws-quarterly-tile th {
+  white-space: normal;
+}

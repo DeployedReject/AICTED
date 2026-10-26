@@ -136,7 +136,7 @@ export async function admin(request: Request, env: Env, user: Official) {
           .map((c) => "o." + c)
           .join(
             ",",
-          )} FROM official_search JOIN officials o ON o.rowid=official_search.rowid WHERE official_search MATCH ? AND o.is_demo=? AND o.active=1 AND o.role<>'it' ${role ? "AND o.role='manager'" : ""} ${bureau ? "AND o.bureau=?" : ""} ORDER BY rank LIMIT 21`,
+          )} FROM official_search JOIN officials o ON o.rowid=official_search.rowid WHERE official_search MATCH ? AND o.is_demo=? AND o.role<>'it' ${role ? "AND o.role='manager'" : ""} ${bureau ? "AND o.bureau=?" : ""} ORDER BY rank LIMIT 21`,
       )
       .bind(match, user.is_demo, ...(bureau ? [bureau] : []))
       .all();
@@ -211,13 +211,64 @@ export async function admin(request: Request, env: Env, user: Official) {
     if (!["manager", "official"].includes(String(input.role)))
       fail(400, "Choose official or manager.");
     const target = await db
-      .prepare(
-        `SELECT ${userColumns} FROM officials WHERE id=? AND is_demo=? AND active=1`,
-      )
+      .prepare(`SELECT ${userColumns} FROM officials WHERE id=? AND is_demo=?`)
       .bind(officialId, user.is_demo)
       .first<Official>();
     if (!target || target.role === "it" || ["0000", "0001"].includes(target.id))
       fail(400, "This account cannot be changed here.");
+    const bureau = input.bureau
+      ? textField(input.bureau, "Bureau", 80)
+      : target.bureau;
+    const designation = input.designation
+      ? textField(input.designation, "Designation", 80)
+      : target.designation;
+    const name = input.name ? textField(input.name, "Name", 120) : target.name;
+    const active = input.active === "0" || input.active === false ? 0 : 1;
+    if (
+      !(await db
+        .prepare("SELECT code FROM org_units WHERE code=? AND active=1")
+        .bind(bureau)
+        .first())
+    )
+      fail(400, "Choose an active bureau.");
+    if (bureau !== target.bureau || !active) {
+      if (
+        await db
+          .prepare(
+            "SELECT id FROM cases WHERE assigned_to=? AND status<>'Disposed' AND intake IN('Submitted','Approved','Returned') LIMIT 1",
+          )
+          .bind(officialId)
+          .first()
+      )
+        fail(
+          409,
+          "Reassign open cases before moving or disabling this official.",
+        );
+      if (
+        await db
+          .prepare(
+            "SELECT id FROM officials WHERE manager_id=? AND active=1 LIMIT 1",
+          )
+          .bind(officialId)
+          .first()
+      )
+        fail(
+          409,
+          "Reassign the reporting team before moving or disabling this manager.",
+        );
+      if (
+        await db
+          .prepare(
+            "SELECT approver_id FROM institution_routing WHERE approver_id=? LIMIT 1",
+          )
+          .bind(officialId)
+          .first()
+      )
+        fail(
+          409,
+          "Choose another institution intake manager before moving or disabling this account.",
+        );
+    }
     if (managerId) {
       const manager = await db
         .prepare(
@@ -225,11 +276,7 @@ export async function admin(request: Request, env: Env, user: Official) {
         )
         .bind(managerId, user.is_demo)
         .first<Official>();
-      if (
-        !manager ||
-        manager.bureau !== target.bureau ||
-        manager.id === officialId
-      )
+      if (!manager || manager.bureau !== bureau || manager.id === officialId)
         fail(400, "Choose a manager from the same Bureau.");
       const cycle = await db
         .prepare(
@@ -256,12 +303,32 @@ export async function admin(request: Request, env: Env, user: Official) {
         : String(input.report_scope || "team");
     if (!["personal", "team", "bureau"].includes(reportAccess))
       fail(400, "Choose report access.");
-    await db
-      .prepare(
-        "UPDATE officials SET role=?,manager_id=?,report_scope=? WHERE id=? AND is_demo=?",
-      )
-      .bind(input.role, managerId, reportAccess, officialId, user.is_demo)
-      .run();
+    await db.batch([
+      db
+        .prepare("UPDATE password_resets SET used=1 WHERE official_id=?")
+        .bind(officialId),
+      db
+        .prepare(
+          "UPDATE officials SET role=?,manager_id=?,report_scope=?,name=?,designation=?,bureau=?,active=? WHERE id=? AND is_demo=?",
+        )
+        .bind(
+          input.role,
+          managerId,
+          reportAccess,
+          name,
+          designation,
+          bureau,
+          active,
+          officialId,
+          user.is_demo,
+        ),
+      db.prepare("DELETE FROM sessions WHERE official_id=?").bind(officialId),
+      db
+        .prepare(
+          "INSERT INTO admin_audit(id,actor_id,action,detail,created_at,is_demo) VALUES(?,?,'official_access_updated',?,?,?)",
+        )
+        .bind(id("audit"), user.id, officialId, now(), user.is_demo),
+    ]);
     return json({ ok: true });
   }
   if (input.action === "institution") {

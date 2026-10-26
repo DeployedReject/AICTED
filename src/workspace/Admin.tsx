@@ -1,3 +1,4 @@
+import InstitutionAdmin from "./InstitutionAdmin";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { Official } from "../../packages/shared/types";
@@ -51,7 +52,8 @@ export default function Admin({
     };
   }, [section]);
   const [account, setAccount] = useState<Official | null>(null),
-    [accountRole, setAccountRole] = useState("official");
+    [accountRole, setAccountRole] = useState("official"),
+    [accountBureau, setAccountBureau] = useState("");
   const [data, setData] = useState<Config | null>(null),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -83,6 +85,7 @@ export default function Admin({
         if (current) {
           setAccount(result.official);
           setAccountRole(result.official.role);
+          setAccountBureau(result.official.bureau);
         }
       })
       .catch((e) => {
@@ -180,10 +183,58 @@ export default function Admin({
                 onSelect={(o) => {
                   setAccount(o);
                   setAccountRole(o?.role || "official");
+                  setAccountBureau(o?.bureau || "");
                 }}
               />
               {account && (
                 <>
+                  <label>
+                    Full name
+                    <input
+                      key={account.id + "-name"}
+                      name="name"
+                      defaultValue={account.name}
+                      required
+                      maxLength={120}
+                    />
+                  </label>
+                  <label>
+                    Designation
+                    <input
+                      key={account.id + "-designation"}
+                      name="designation"
+                      defaultValue={account.designation}
+                      required
+                      maxLength={80}
+                    />
+                  </label>
+                  <label>
+                    Bureau / Cell
+                    <select
+                      name="bureau"
+                      value={accountBureau}
+                      onChange={(event) => setAccountBureau(event.target.value)}
+                    >
+                      {data.units
+                        .filter((unit) => unit.active)
+                        .map((unit) => (
+                          <option key={unit.code} value={unit.code}>
+                            {unit.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label>
+                    Account availability
+                    <select
+                      key={account.id + "-active"}
+                      name="active"
+                      defaultValue={String(account.active ?? 1)}
+                    >
+                      <option value="1">Active</option>
+                      <option value="0">Disabled</option>
+                    </select>
+                  </label>
                   <label title="Managers review officials in their configured reporting tree.">
                     Access level
                     <select
@@ -218,14 +269,18 @@ export default function Admin({
                     </select>
                   </label>
                   <OfficialPicker
-                    key={account?.id || "manager"}
+                    key={(account?.id || "manager") + accountBureau}
                     name="manager_id"
                     label="Reporting manager"
                     excludeId={account?.id || ""}
                     officials={data.officials}
                     role="manager"
-                    bureau={account?.bureau || ""}
-                    value={account?.manager_id || ""}
+                    bureau={accountBureau}
+                    value={
+                      accountBureau === account.bureau
+                        ? account.manager_id || ""
+                        : ""
+                    }
                   />
                   <button disabled={busy} className="ws-primary">
                     Save
@@ -287,30 +342,7 @@ export default function Admin({
         </div>
       )}
       {section === "Institutions" && (
-        <section className="ws-card ws-admin-form">
-          <h2>Register institution</h2>
-          <form onSubmit={(e) => void save(e, "institution")}>
-            {[
-              ["name", "Institution name"],
-              ["permanent_id", "Permanent ID"],
-              ["city", "City"],
-              ["state", "State"],
-              ["region", "Region"],
-            ].map(([key, label]) => (
-              <label key={key}>
-                {label}
-                <input
-                  name={key}
-                  required
-                  maxLength={key === "name" ? 180 : 80}
-                />
-              </label>
-            ))}
-            <button disabled={busy} className="ws-primary">
-              Register
-            </button>
-          </form>
-        </section>
+        <InstitutionAdmin units={data.units} officials={data.officials} />
       )}
       {section === "Email" && (
         <EmailSettings

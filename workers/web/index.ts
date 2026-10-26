@@ -17,19 +17,20 @@ export default {
     env = applicationEnv(env);
     const url = new URL(request.url);
     const protectedPage =
-      /^\/(?:workspace|it\/(?:workspace|setup))(?:\/|$)/.test(url.pathname);
+      /^\/(?:workspace|institution\/workspace|it\/(?:workspace|setup))(?:\/|$)/.test(
+        url.pathname,
+      );
     if (protectedPage) {
       try {
         const user = await session(request, env);
-        const it = url.pathname.startsWith("/it/");
-        if ((user.role === "it") !== it)
-          return Response.redirect(
-            new URL(
-              user.role === "it" ? "/it/workspace" : "/workspace",
-              url,
-            ).toString(),
-            302,
-          );
+        const home =
+          user.role === "it"
+            ? "/it/workspace"
+            : user.role === "institution"
+              ? "/institution/workspace"
+              : "/workspace";
+        if (!url.pathname.startsWith(home))
+          return Response.redirect(new URL(home, url).toString(), 302);
         const response = await env.ASSETS.fetch(request);
         const headers = new Headers(response.headers);
         headers.set("Cache-Control", "private, no-store");
@@ -41,7 +42,11 @@ export default {
         if (error instanceof HttpError && error.status === 401)
           return Response.redirect(
             new URL(
-              url.pathname.startsWith("/it/") ? "/it" : "/",
+              url.pathname.startsWith("/it/")
+                ? "/it"
+                : url.pathname.startsWith("/institution/")
+                  ? "/?portal=institution"
+                  : "/",
               url,
             ).toString(),
             302,
@@ -50,7 +55,9 @@ export default {
       }
     }
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
-    return guard(async () => {
+    let changeUser: Official | undefined;
+    let previousAssignee = "";
+    const response = await guard(async () => {
       if (
         request.method !== "GET" &&
         request.headers.get("origin") !== url.origin
@@ -73,6 +80,21 @@ export default {
         )
           fail(429, "Too many attempts. Try again in a minute.");
         const input = await body(request);
+        if (input.portal === "institution") {
+          if (!env.INSTITUTIONS)
+            fail(503, "Institution sign-in is unavailable.");
+          return env.INSTITUTIONS.fetch(
+            new Request("https://private/api/institution/login", {
+              method: "POST",
+              headers: {
+                "x-internal-secret": env.INTERNAL_SECRET,
+                "x-forwarded-proto": url.protocol.slice(0, -1),
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(input),
+            }),
+          );
+        }
         const portal = input.portal === "it" ? "it" : "official";
         if (
           typeof input.id !== "string" ||
@@ -166,7 +188,11 @@ export default {
           ?.slice(15);
         if (token)
           await (token.startsWith("it.") ? fixed.DB : env.DB)
-            .prepare("DELETE FROM sessions WHERE token_hash=?")
+            .prepare(
+              token.startsWith("institution.")
+                ? "DELETE FROM institution_sessions WHERE token_hash=?"
+                : "DELETE FROM sessions WHERE token_hash=?",
+            )
             .bind(await sha(token))
             .run();
         return new Response("{}", {
@@ -178,7 +204,119 @@ export default {
         });
       }
       let user = await session(request, env);
+      changeUser = user;
+      if (
+        request.method === "POST" &&
+        /^\/api\/cases\/[^/]+\/action$/.test(url.pathname)
+      ) {
+        const row = await env.DB.prepare(
+          "SELECT assigned_to FROM cases WHERE id=? AND is_demo=?",
+        )
+          .bind(decodeURIComponent(url.pathname.split("/")[3]), user.is_demo)
+          .first<{ assigned_to: string }>();
+        previousAssignee = row?.assigned_to || "";
+      }
+      if (url.pathname === "/api/live") {
+        if (!env.LIVE) fail(503, "Live updates are unavailable.");
+        if (request.headers.get("Origin") !== url.origin)
+          fail(403, "Live connection origin is not allowed.");
+        const headers = new Headers(request.headers);
+        headers.delete("cookie");
+        headers.set("x-internal-secret", env.INTERNAL_SECRET);
+        headers.set("x-actor", JSON.stringify(user));
+        headers.set(
+          "x-portal-client",
+          (url.searchParams.get("client") || "").slice(0, 100),
+        );
+        return env.LIVE.fetch(new Request("https://live/open", { headers }));
+      }
 
+      if (
+        /^\/api\/admin\/institution-(records|accounts|routing)$/.test(
+          url.pathname,
+        )
+      ) {
+        if (user.role !== "it") fail(403, "Administration access is required.");
+        if (!env.INSTITUTIONS)
+          fail(503, "Institution administration is unavailable.");
+        if (
+          request.method !== "GET" &&
+          env.WRITE_LIMITER &&
+          !(await env.WRITE_LIMITER.limit({ key: user.id })).success
+        )
+          fail(429, "Please wait before making more changes.");
+        const headers = new Headers(request.headers);
+        headers.delete("cookie");
+        headers.set("x-internal-secret", env.INTERNAL_SECRET);
+        headers.set("x-actor", JSON.stringify(user));
+        headers.delete("x-db-generation");
+        if (env.DB_GENERATION?.value)
+          headers.set("x-db-generation", env.DB_GENERATION.value);
+        return env.INSTITUTIONS.fetch(new Request(request, { headers }));
+      }
+      if (user.role === "institution") {
+        if (url.pathname === "/api/auth/me") return json({ user });
+        if (!url.pathname.startsWith("/api/institution/"))
+          fail(403, "Use the institution portal.");
+        if (!env.INSTITUTIONS) fail(503, "Institution service is unavailable.");
+        if (
+          request.method !== "GET" &&
+          env.WRITE_LIMITER &&
+          !(await env.WRITE_LIMITER.limit({ key: user.id })).success
+        )
+          fail(429, "Please wait before making more changes.");
+        const headers = new Headers(request.headers);
+        headers.delete("cookie");
+        headers.set("x-internal-secret", env.INTERNAL_SECRET);
+        headers.set("x-actor", JSON.stringify(user));
+        headers.delete("x-db-generation");
+        if (env.DB_GENERATION?.value)
+          headers.set("x-db-generation", env.DB_GENERATION.value);
+        return env.INSTITUTIONS.fetch(new Request(request, { headers }));
+      }
+      if (url.pathname.startsWith("/api/institution/"))
+        fail(403, "Institution access is required.");
+      if (
+        /^\/api\/handoffs(?:\/[^/]+)?$/.test(url.pathname) ||
+        /^\/api\/cases\/[^/]+\/handoff$/.test(url.pathname)
+      ) {
+        if (!env.HANDOFFS) fail(503, "Handoff service is unavailable.");
+        if (user.role !== "manager") fail(403, "Manager access is required.");
+        if (
+          request.method !== "GET" &&
+          env.WRITE_LIMITER &&
+          !(await env.WRITE_LIMITER.limit({ key: user.id })).success
+        )
+          fail(429, "Please wait before making more changes.");
+        const headers = new Headers(request.headers);
+        headers.delete("cookie");
+        headers.set("x-internal-secret", env.INTERNAL_SECRET);
+        headers.set("x-actor", JSON.stringify(user));
+        headers.delete("x-db-generation");
+        if (env.DB_GENERATION?.value)
+          headers.set("x-db-generation", env.DB_GENERATION.value);
+        return env.HANDOFFS.fetch(new Request(request, { headers }));
+      }
+      if (
+        url.pathname === "/api/reports" ||
+        url.pathname === "/api/reports/export"
+      ) {
+        if (!env.REPORTS) fail(503, "Reports are unavailable.");
+        if (
+          url.pathname.endsWith("/export") &&
+          env.WRITE_LIMITER &&
+          !(await env.WRITE_LIMITER.limit({ key: "export:" + user.id })).success
+        )
+          fail(429, "Please wait before exporting another report.");
+        const headers = new Headers(request.headers);
+        headers.delete("cookie");
+        headers.set("x-internal-secret", env.INTERNAL_SECRET);
+        headers.set("x-actor", JSON.stringify(user));
+        headers.delete("x-db-generation");
+        if (env.DB_GENERATION?.value)
+          headers.set("x-db-generation", env.DB_GENERATION.value);
+        return env.REPORTS.fetch(new Request(request, { headers }));
+      }
       if (url.pathname === "/api/database") {
         if (user.role !== "it") fail(403, "IT access is required.");
         if (!env.DATABASE) fail(503, "Database routing is not configured.");
@@ -210,12 +348,19 @@ export default {
       headers.delete("x-db-generation");
       if (env.DB_GENERATION?.value)
         headers.set("x-db-generation", env.DB_GENERATION.value);
-      const documentsRequest =
-        url.pathname === "/api/documents/config" ||
-        /^\/api\/cases\/[^/]+\/documents(?:\/[^/]+)?$/.test(url.pathname);
+      const noticesRequest = url.pathname === "/api/notices";
+      if (noticesRequest && !env.NOTIFICATIONS)
+        fail(503, "Notifications are unavailable.");
+      const documentsRequest = /^\/api\/cases\/[^/]+\/documents\/folder$/.test(
+        url.pathname,
+      );
       if (documentsRequest && !env.DOCUMENTS)
         fail(503, "Document storage is not configured.");
-      const service = documentsRequest ? env.DOCUMENTS! : env.CASEWORK;
+      const service = noticesRequest
+        ? env.NOTIFICATIONS!
+        : documentsRequest
+          ? env.DOCUMENTS!
+          : env.CASEWORK;
       const response = await service.fetch(new Request(request, { headers }));
       if (
         !user.is_demo &&
@@ -245,5 +390,45 @@ export default {
         );
       return response;
     });
+    if (changeUser && env.LIVE && response.ok && request.method === "POST") {
+      const publisher = changeUser;
+      ctx.waitUntil(
+        (async () => {
+          let id = "";
+          try {
+            id = String(
+              ((await response.clone().json()) as { id?: string }).id || "",
+            );
+          } catch {}
+          try {
+            await env.LIVE!.fetch(
+              new Request("https://live/change", {
+                method: "POST",
+                headers: {
+                  "x-internal-secret": env.INTERNAL_SECRET,
+                  "x-actor": JSON.stringify(publisher),
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  path: url.pathname,
+                  id,
+                  previous: previousAssignee,
+                  client: (request.headers.get("x-portal-client") || "").slice(
+                    0,
+                    100,
+                  ),
+                }),
+              }),
+            );
+          } catch (error) {
+            console.error(
+              "Live update delivery failed",
+              error instanceof Error ? error.message : "unknown",
+            );
+          }
+        })(),
+      );
+    }
+    return response;
   },
 } satisfies ExportedHandler<Env>;

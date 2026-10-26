@@ -63,6 +63,7 @@ interface Folder {
   drive_url: string;
   updated_at: string;
   updated_name: string;
+  is_public: number;
 }
 export default function Documents({
   record,
@@ -76,6 +77,7 @@ export default function Documents({
       can_edit: boolean;
     } | null>(null),
     [value, setValue] = useState(""),
+    [shared, setShared] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   useEffect(() => {
@@ -87,6 +89,7 @@ export default function Documents({
         if (active) {
           setData(result);
           setValue(result.folder?.drive_url || "");
+          setShared(!!result.folder?.is_public);
         }
       })
       .catch((error) => {
@@ -151,7 +154,7 @@ export default function Documents({
                     "/cases/" +
                       encodeURIComponent(record.id) +
                       "/documents/folder",
-                    { url },
+                    { url, is_public: shared },
                   );
                   onChange();
                 } catch (error) {
@@ -162,9 +165,23 @@ export default function Documents({
               }}
             >
               <FolderField value={value} onChange={setValue} busy={busy} />
+              {record.institution_account_id && (
+                <label className="ws-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={shared}
+                    onChange={(event) => setShared(event.target.checked)}
+                  />
+                  Show this folder link in the institution portal
+                </label>
+              )}
               <button
                 className="ws-primary"
-                disabled={busy || value === (data.folder?.drive_url || "")}
+                disabled={
+                  busy ||
+                  (value === (data.folder?.drive_url || "") &&
+                    shared === !!data.folder?.is_public)
+                }
               >
                 {busy
                   ? "Saving link…"

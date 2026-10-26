@@ -1,0 +1,17 @@
+{
+  "name": "aicted-handoffs",
+  "main": "index.ts",
+  "compatibility_date": "2026-10-18",
+  "workers_dev": false,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aicted-workspace",
+      "database_id": "89aee8a9-9366-4a4c-a7ec-031ed3edb9a8",
+      "migrations_dir": "../../database/migrations",
+    },
+  ],
+  "services": [{ "binding": "DATABASE", "service": "aicted-database" }],
+  "triggers": { "crons": [] },
+}

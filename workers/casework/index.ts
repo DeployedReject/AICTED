@@ -1,3 +1,7 @@
+import { caseNotice, overlapNotices } from "./notices";
+import { runtime } from "../runtime";
+import { institutionResponse } from "./institution-response";
+import { historyPage } from "./history";
 import { applicationEnv } from "../database/client";
 import type { Official } from "../../packages/shared/types";
 import type { Env } from "../shared";
@@ -34,23 +38,28 @@ function event(
   user: Official,
   message: string,
   stamp = now(),
+  isPublic = 0,
 ) {
   return db
     .prepare(
-      "INSERT INTO case_events(id,case_id,kind,actor_id,body,created_at) VALUES(?,?,?,?,?,?)",
+      "INSERT INTO case_events(id,case_id,kind,actor_id,body,created_at,is_public) VALUES(?,?,?,?,?,?,?)",
     )
-    .bind(id("event"), caseId, kind, user.id, message, stamp);
+    .bind(id("event"), caseId, kind, user.id, message, stamp, isPublic);
 }
 async function summary(env: Env, user: Official) {
   const s = reportScope(user);
+  const cfg = await runtime(env, user.is_demo);
   return env.DB.prepare(
-    `${s.sql} SELECT COUNT(*) AS total,COALESCE(SUM(intake='Approved' AND status='Pending'),0) AS pending,COALESCE(SUM(intake='Approved' AND status IN('Under process','Awaiting information')),0) AS processing,COALESCE(SUM(intake='Approved' AND status='Disposed'),0) AS disposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at<?),0) AS overdue,COALESCE(SUM(intake='Approved' AND escalated=1 AND status<>'Disposed'),0) AS escalated,COALESCE(SUM(intake='Submitted'),0) AS proposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=cases.institution_id AND other.is_demo=cases.is_demo AND other.bureau<>cases.bureau AND other.intake='Approved' AND other.status<>'Disposed')),0) AS overlaps,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at>=? AND due_at<=?),0) AS due_soon FROM cases WHERE id IN(SELECT id FROM measured)`,
+    `${s.sql} SELECT (SELECT COUNT(*) FROM case_notices WHERE official_id=? AND read_at IS NULL) unread_notices,COUNT(*) AS total,COALESCE(SUM(intake='Approved' AND status='Pending'),0) AS pending,COALESCE(SUM(intake='Approved' AND status IN('Under process','Awaiting information')),0) AS processing,COALESCE(SUM(intake='Approved' AND status='Disposed'),0) AS disposed,(SELECT COUNT(DISTINCT e.case_id) FROM case_events e WHERE e.kind IN('transferred','transferred_out') AND (e.actor_id IN(SELECT id FROM reporting) OR e.case_assigned_snapshot IN(SELECT id FROM reporting) OR (?=1 AND e.case_bureau_snapshot=?))) AS transferred,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at<?),0) AS overdue,COALESCE(SUM(intake='Approved' AND escalated=1 AND status<>'Disposed'),0) AS escalated,COALESCE(SUM(intake='Submitted'),0) AS proposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=cases.institution_id AND other.is_demo=cases.is_demo AND other.bureau<>cases.bureau AND other.intake='Approved' AND other.status<>'Disposed' AND NOT EXISTS(SELECT 1 FROM case_relations unrelated WHERE unrelated.case_id=MIN(cases.id,other.id) AND unrelated.related_case_id=MAX(cases.id,other.id) AND unrelated.kind='Unrelated'))),0) AS overlaps,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at>=? AND due_at<=?),0) AS due_soon FROM cases WHERE id IN(SELECT id FROM measured)`,
   )
     .bind(
       ...s.args,
+      user.id,
+      user.role === "manager" && user.report_scope === "bureau" ? 1 : 0,
+      user.bureau,
       now(),
       now(),
-      new Date(Date.now() + 3 * 86400000).toISOString(),
+      new Date(Date.now() + cfg.reminder_days * 86400000).toISOString(),
     )
     .first();
 }
@@ -64,7 +73,7 @@ export default {
         path = url.pathname;
       const s = scope(user);
       if (path === "/api/overlaps" && request.method === "GET")
-        return overlaps(env, user);
+        return overlaps(env, user, url.searchParams.get("cursor") || "");
       if (path === "/api/officials" && request.method === "GET")
         return directory(url, env, user);
       if (
@@ -161,7 +170,11 @@ export default {
           conditions.push(
             "c.status<>'Disposed' AND c.due_at>=? AND c.due_at<=?",
           );
-          args.push(now(), new Date(Date.now() + 3 * 86400000).toISOString());
+          const cfg = await runtime(env, user.is_demo);
+          args.push(
+            now(),
+            new Date(Date.now() + cfg.reminder_days * 86400000).toISOString(),
+          );
         }
         if (params.get("attention") === "overdue") {
           conditions.push("c.status<>'Disposed' AND c.due_at<?");
@@ -191,7 +204,7 @@ export default {
         const prefix = query.replace(/[\\%_]/g, "\\$&") + "%";
         const result = await db
           .prepare(
-            "SELECT id,name,permanent_id,city,state,region,is_demo FROM institutions WHERE is_demo=? AND (name LIKE ? ESCAPE '\\' OR permanent_id LIKE ? ESCAPE '\\') ORDER BY name,id LIMIT 13",
+            "SELECT id,name,permanent_id,city,state,region,is_demo FROM institutions WHERE is_demo=? AND active=1 AND (name LIKE ? ESCAPE '\\' OR permanent_id LIKE ? ESCAPE '\\') ORDER BY name,id LIMIT 13",
           )
           .bind(user.is_demo, prefix, prefix)
           .all();
@@ -234,13 +247,13 @@ export default {
             .all(),
           db
             .prepare(
-              `${s.sql} ${caseSelect} WHERE c.is_demo=? AND c.intake='Submitted' AND c.created_by IN(SELECT id FROM team) AND c.created_by<>? AND c.bureau=? ORDER BY c.received_at LIMIT 6`,
+              `${s.sql} ${caseSelect} WHERE c.is_demo=? AND c.intake='Submitted' AND c.created_by IN(SELECT id FROM team) AND (c.created_by<>? OR c.institution_account_id IS NOT NULL) AND c.bureau=? ORDER BY c.received_at LIMIT 6`,
             )
             .bind(...s.args, user.is_demo, user.id, user.bureau)
             .all(),
           db
             .prepare(
-              `${s.sql} SELECT (SELECT COUNT(*) FROM officials WHERE id IN(SELECT id FROM team) AND id<>? AND active=1 AND bureau=?) team_count,COUNT(*) n FROM cases WHERE is_demo=? AND intake='Submitted' AND created_by IN(SELECT id FROM team) AND created_by<>? AND bureau=?`,
+              `${s.sql} SELECT (SELECT COUNT(*) FROM officials WHERE id IN(SELECT id FROM team) AND id<>? AND active=1 AND bureau=?) team_count,COUNT(*) n FROM cases WHERE is_demo=? AND intake='Submitted' AND created_by IN(SELECT id FROM team) AND (created_by<>? OR institution_account_id IS NOT NULL) AND bureau=?`,
             )
             .bind(
               ...s.args,
@@ -271,21 +284,6 @@ export default {
           approvals: counts?.n || 0,
           team_count: counts?.team_count || 0,
           coordination: coordination?.n || 0,
-        });
-      }
-      if (request.method === "GET" && path === "/api/reports") {
-        const metrics = reportScope(user);
-        const rows = await db
-          .prepare(
-            `${metrics.sql} SELECT c.bureau,i.region,c.status,c.intake,c.escalated,c.received_at,c.due_at,c.updated_at,(SELECT MAX(created_at) FROM case_events e WHERE e.case_id=c.id AND e.kind='disposed') disposed_at,(SELECT COUNT(*) FROM case_events e WHERE e.case_id=c.id AND e.kind='transferred') transfers,(c.intake='Approved' AND c.status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=c.institution_id AND other.is_demo=c.is_demo AND other.bureau<>c.bureau AND other.intake='Approved' AND other.status<>'Disposed')) overlaps FROM cases c JOIN institutions i ON i.id=c.institution_id WHERE c.id IN(SELECT id FROM measured) ORDER BY c.received_at DESC LIMIT 500`,
-          )
-          .bind(...metrics.args)
-          .all();
-        return json({
-          scope: metrics.label,
-          rows: rows.results,
-          as_of: now(),
-          limited: rows.results.length === 500,
         });
       }
       if (request.method === "GET" && path === "/api/messages") {
@@ -339,12 +337,13 @@ export default {
           ) > 500
         )
           fail(429, "The test workspace message limit has been reached.");
+        const messageId = id("message");
         await db
           .prepare(
             "INSERT INTO messages(id,sender_id,recipient_id,case_id,body,created_at,is_demo) VALUES(?,?,?,?,?,?,?)",
           )
           .bind(
-            id("message"),
+            messageId,
             user.id,
             recipientId,
             caseId,
@@ -353,7 +352,7 @@ export default {
             user.is_demo,
           )
           .run();
-        return json({ ok: true }, 201);
+        return json({ ok: true, id: messageId }, 201);
       }
       if (request.method === "POST" && path === "/api/cases") {
         const input = await body(request);
@@ -363,7 +362,9 @@ export default {
           nextAction = textField(input.next_action, "Next action", 300, 3);
         if (
           !(await db
-            .prepare("SELECT id FROM institutions WHERE id=? AND is_demo=?")
+            .prepare(
+              "SELECT id FROM institutions WHERE id=? AND is_demo=? AND active=1",
+            )
             .bind(institutionId, user.is_demo)
             .first())
         )
@@ -444,6 +445,24 @@ export default {
         ]);
         return json({ id: caseId }, 201);
       }
+      const institutionReply = path.match(
+        /^\/api\/cases\/([^/]+)\/institution-response$/,
+      );
+      if (institutionReply && request.method === "POST")
+        return institutionResponse(
+          request,
+          env,
+          user,
+          decodeURIComponent(institutionReply[1]),
+        );
+      const historyMatch = path.match(/^\/api\/cases\/([^/]+)\/history$/);
+      if (historyMatch && request.method === "GET") {
+        const caseId = decodeURIComponent(historyMatch[1]);
+        await readable(db, user, caseId);
+        return json(
+          await historyPage(db, caseId, url.searchParams.get("cursor") || ""),
+        );
+      }
       const match = path.match(
         /^\/api\/cases\/([^/]+)(?:\/(comments|action|decision|coordination|resubmit|relations))?$/,
       );
@@ -455,12 +474,7 @@ export default {
         if (request.method === "GET" && !action) {
           const [events, coordination, candidates, relations] =
             await Promise.all([
-              db
-                .prepare(
-                  `SELECT e.*,o.name actor_name,o.designation,o.bureau FROM case_events e JOIN officials o ON o.id=e.actor_id WHERE e.case_id=? ORDER BY e.created_at DESC,e.id DESC LIMIT 60`,
-                )
-                .bind(caseId)
-                .all(),
+              historyPage(db, caseId),
               db
                 .prepare(
                   `SELECT r.*,o.name target_name FROM coordination_requests r JOIN officials o ON o.id=r.target_official_id WHERE r.case_id=? ORDER BY r.created_at DESC LIMIT 20`,
@@ -469,9 +483,9 @@ export default {
                 .all(),
               db
                 .prepare(
-                  `SELECT DISTINCT other.bureau FROM cases other WHERE other.is_demo=? AND other.institution_id=? AND other.bureau<>? AND other.intake='Approved' AND other.status<>'Disposed' LIMIT 6`,
+                  `SELECT DISTINCT other.bureau FROM cases other WHERE other.is_demo=? AND other.institution_id=? AND other.bureau<>? AND other.intake='Approved' AND other.status<>'Disposed' AND NOT EXISTS(SELECT 1 FROM case_relations unrelated WHERE unrelated.case_id=MIN(?,other.id) AND unrelated.related_case_id=MAX(?,other.id) AND unrelated.kind='Unrelated') LIMIT 12`,
                 )
-                .bind(user.is_demo, c.institution_id, c.bureau)
+                .bind(user.is_demo, c.institution_id, c.bureau, c.id, c.id)
                 .all(),
               db
                 .prepare(
@@ -503,6 +517,7 @@ export default {
               can_comment: c.intake === "Approved",
             },
             events: events.results,
+            events_next: events.next,
             coordination: records,
             candidates: candidates.results,
             relations: relations.results,
@@ -559,6 +574,11 @@ export default {
               ),
             ]);
           } else if (action === "resubmit") {
+            if (c.institution_account_id)
+              fail(
+                403,
+                "The institution must revise its own submission through its portal.",
+              );
             if (c.created_by !== user.id || c.intake !== "Returned")
               fail(
                 403,
@@ -597,7 +617,15 @@ export default {
               );
             const message = textField(input.body, "Comment", 3000);
             await db.batch([
-              event(db, caseId, "comment", user, message, stamp),
+              event(
+                db,
+                caseId,
+                "comment",
+                user,
+                message,
+                stamp,
+                input.is_public === "1" || input.is_public === true ? 1 : 0,
+              ),
               db
                 .prepare("UPDATE cases SET updated_at=? WHERE id=?")
                 .bind(stamp, caseId),
@@ -605,7 +633,11 @@ export default {
           } else if (action === "decision") {
             if (c.intake !== "Submitted")
               fail(409, "This proposal has already been reviewed.");
-            if (!(await managerFor(db, user, c.created_by, c.bureau)))
+            if (
+              !(c.institution_account_id
+                ? user.role === "manager" && canAct
+                : await managerFor(db, user, c.created_by, c.bureau))
+            )
               fail(
                 403,
                 "A designated manager must review this proposal. You cannot approve your own case.",
@@ -614,10 +646,21 @@ export default {
             if (!["Approved", "Returned", "Rejected"].includes(decision))
               fail(400, "Choose a valid decision.");
             const reason = textField(input.reason, "Decision note", 1000, 3);
+            const dueAt =
+              c.institution_account_id && decision === "Approved"
+                ? textField(input.due_at, "Expected disposal date", 10)
+                : c.due_at;
+            if (
+              c.institution_account_id &&
+              decision === "Approved" &&
+              (!/^\d{4}-\d{2}-\d{2}$/.test(dueAt) ||
+                !Number.isFinite(Date.parse(dueAt)))
+            )
+              fail(400, "Choose a valid expected disposal date.");
             const results = await db.batch([
               db
                 .prepare(
-                  "INSERT INTO case_events(id,case_id,kind,actor_id,body,created_at) SELECT ?,id,?,?,?,? FROM cases WHERE id=? AND intake='Submitted'",
+                  "INSERT INTO case_events(id,case_id,kind,actor_id,body,created_at,is_public) SELECT ?,id,?,?,?,?,? FROM cases WHERE id=? AND intake='Submitted'",
                 )
                 .bind(
                   id("event"),
@@ -625,13 +668,14 @@ export default {
                   user.id,
                   reason,
                   stamp,
+                  input.is_public === "1" ? 1 : 0,
                   caseId,
                 ),
               db
                 .prepare(
-                  "UPDATE cases SET intake=?,approval_reason=?,updated_at=? WHERE id=? AND intake='Submitted'",
+                  "UPDATE cases SET intake=?,approval_reason=?,updated_at=?,due_at=? WHERE id=? AND intake='Submitted'",
                 )
-                .bind(decision, reason, stamp, caseId),
+                .bind(decision, reason, stamp, dueAt, caseId),
             ]);
             if (!results[1].meta.changes)
               fail(409, "This proposal has already been reviewed.");
@@ -656,7 +700,7 @@ export default {
                 fail(409, "This case is already disposed.");
               statement = db
                 .prepare(
-                  "UPDATE cases SET status='Disposed',updated_at=? WHERE id=?",
+                  "UPDATE cases SET status='Disposed',escalated=0,cancellation_state=CASE WHEN cancellation_state='Awaiting review' THEN 'Closed with case' ELSE cancellation_state END,institution_escalation=CASE WHEN institution_escalation='Awaiting review' THEN 'Closed with case' ELSE institution_escalation END,updated_at=? WHERE id=?",
                 )
                 .bind(stamp, caseId);
             } else if (type === "reopen") {
@@ -825,6 +869,15 @@ export default {
               ),
             ]);
           } else return fail(404, "Unknown case action.");
+          if (action === "decision" && input.decision === "Approved")
+            await overlapNotices(env, caseId);
+          if (action === "action" && input.action === "escalate")
+            await caseNotice(
+              env,
+              caseId,
+              "escalation",
+              "This case was escalated. Review the case history and next action.",
+            );
           return json({ ok: true });
         }
       }
@@ -1004,7 +1057,7 @@ export default {
         if (cached) return json(JSON.parse(cached.suggestions));
         const quota = await db
           .prepare(
-            "INSERT INTO inference_usage(official_id,day,calls) VALUES(?,?,1) ON CONFLICT(official_id,day) DO UPDATE SET calls=calls+1 WHERE calls<10",
+            "INSERT INTO inference_usage(official_id,day,calls) VALUES(?,?,1) ON CONFLICT(official_id,day) DO UPDATE SET calls=inference_usage.calls+1 WHERE inference_usage.calls<10",
           )
           .bind(user.id, now().slice(0, 10))
           .run();

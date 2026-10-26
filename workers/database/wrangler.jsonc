@@ -13,6 +13,7 @@
       "migrations_dir": "../../database/migrations",
     },
   ],
+  "services": [{ "binding": "LIVE", "service": "aicted-live" }],
   "durable_objects": {
     "bindings": [{ "name": "ROUTER", "class_name": "DatabaseRouter" }],
   },

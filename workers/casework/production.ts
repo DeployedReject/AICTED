@@ -307,6 +307,9 @@ export async function production(
       fail(404, "Official not found.");
     await env.DB.batch([
       env.DB.prepare(
+        "UPDATE password_resets SET used=1 WHERE official_id=?",
+      ).bind(accountId),
+      env.DB.prepare(
         "UPDATE officials SET email=? WHERE id=? AND is_demo=?",
       ).bind(email(input.email, true), accountId, user.is_demo),
       audit(env, user, "email_updated", accountId),

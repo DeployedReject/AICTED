@@ -9,17 +9,30 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           const path = (req.url || "").split("?")[0];
-          if (!/^\/(?:workspace|it\/(?:workspace|setup))(?:\/|$)/.test(path)) {
+          if (
+            !/^\/(?:workspace|institution\/workspace|it\/(?:workspace|setup))(?:\/|$)/.test(
+              path,
+            )
+          ) {
             next();
             return;
           }
           try {
-            const response = await fetch("http://127.0.0.1:8787/api/auth/me", {
-              headers: { cookie: req.headers.cookie || "" },
-            });
+            const response = await fetch(
+              "http://127.0.0.1:" +
+                (process.env.AICTED_API_PORT || "8787") +
+                "/api/auth/me",
+              {
+                headers: { cookie: req.headers.cookie || "" },
+              },
+            );
             if (response.status === 401) {
               res.writeHead(302, {
-                Location: path.startsWith("/it/") ? "/it" : "/",
+                Location: path.startsWith("/it/")
+                  ? "/it"
+                  : path.startsWith("/institution/")
+                    ? "/?portal=institution"
+                    : "/",
               });
               res.end();
               return;
@@ -32,10 +45,14 @@ export default defineConfig({
             const { user } = (await response.json()) as {
               user: { role: string };
             };
-            if ((user.role === "it") !== path.startsWith("/it/")) {
-              res.writeHead(302, {
-                Location: user.role === "it" ? "/it/workspace" : "/workspace",
-              });
+            const home =
+              user.role === "it"
+                ? "/it/workspace"
+                : user.role === "institution"
+                  ? "/institution/workspace"
+                  : "/workspace";
+            if (!path.startsWith(home)) {
+              res.writeHead(302, { Location: home });
               res.end();
               return;
             }
@@ -52,12 +69,23 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: "http://127.0.0.1:" + (process.env.AICTED_API_PORT || "8787"),
+        ws: true,
         configure(proxy) {
+          proxy.on("proxyReqWs", (proxyReq, request) => {
+            if (request.headers.origin === `http://${request.headers.host}`)
+              proxyReq.setHeader(
+                "origin",
+                "http://127.0.0.1:" + (process.env.AICTED_API_PORT || "8787"),
+              );
+          });
           proxy.on("proxyReq", (proxyReq, request) => {
             // Preserve the production same-origin check behind the local Vite proxy.
             if (request.headers.origin === `http://${request.headers.host}`)
-              proxyReq.setHeader("origin", "http://127.0.0.1:8787");
+              proxyReq.setHeader(
+                "origin",
+                "http://127.0.0.1:" + (process.env.AICTED_API_PORT || "8787"),
+              );
           });
         },
         changeOrigin: true,

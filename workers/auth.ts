@@ -42,6 +42,24 @@ export async function session(
 ): Promise<Official & { portal: string }> {
   const token = cookieToken(request);
   if (!token || token.length > 150) fail(401, "Please sign in.");
+  if (token.startsWith("institution.")) {
+    const user = await env.DB.prepare(
+      "SELECT a.id,a.name,a.email,a.institution_id,a.is_demo FROM institution_sessions s JOIN institution_accounts a ON a.id=s.account_id JOIN institutions i ON i.id=a.institution_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1 AND i.active=1 AND a.is_demo=i.is_demo",
+    )
+      .bind(await sha(token), Math.floor(Date.now() / 1000))
+      .first<Official>();
+    if (!user)
+      fail(401, "Your institution session has expired. Please sign in again.");
+    return {
+      ...user,
+      role: "institution",
+      designation: "Institution representative",
+      bureau: "",
+      manager_id: null,
+      report_scope: "personal",
+      portal: "institution",
+    };
+  }
   const db = token.startsWith("it.") ? env.CONTROL_DB || env.DB : env.DB;
   const user = await db
     .prepare(
