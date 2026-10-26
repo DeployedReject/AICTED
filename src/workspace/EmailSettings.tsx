@@ -183,15 +183,40 @@ export default function EmailSettings({
           <dt>Updates</dt>
           <dd>{config.updates_sender || "Not configured"}</dd>
         </dl>
+        {demo ? (
+          <p className="ws-description">
+            Sending test emails requires a production IT account.
+          </p>
+        ) : !accountEmail ? (
+          <p className="ws-description">
+            Add an email address to your IT account before sending a test email.
+          </p>
+        ) : null}
         <div className="ws-actions">
           <button
             disabled={busy || demo || !accountEmail}
+            aria-busy={busy}
+            title={
+              demo
+                ? "Test emails are disabled for demo accounts."
+                : !accountEmail
+                  ? "Add your account email first."
+                  : undefined
+            }
             onClick={() => void verify("recovery")}
           >
             Recovery
           </button>
           <button
             disabled={busy || demo || !accountEmail}
+            aria-busy={busy}
+            title={
+              demo
+                ? "Test emails are disabled for demo accounts."
+                : !accountEmail
+                  ? "Add your account email first."
+                  : undefined
+            }
             onClick={() => void verify("updates")}
           >
             Updates

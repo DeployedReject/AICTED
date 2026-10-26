@@ -3275,3 +3275,61 @@
 .workspace .ws-database-settings .ws-current-db > div {
   flex: 1 1 12rem;
 }
+/* Settings rows have a continuous outer edge; database history fills the short column. */
+.workspace .ws-admin-grid {
+  align-items: stretch;
+}
+.ws-db-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+  align-items: stretch;
+}
+.ws-db-columns > .ws-card,
+.ws-db-stack > .ws-card {
+  margin: 0;
+  min-width: 0;
+}
+.ws-db-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.ws-db-stack > .ws-card:last-child {
+  flex: 1;
+}
+.workspace .ws-database-settings .ws-current-db {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: center;
+}
+.workspace .ws-database-settings .ws-current-db > div {
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+.workspace .ws-current-db > button {
+  justify-self: end;
+}
+.workspace button:disabled:hover {
+  border-color: var(--border);
+  background: var(--input);
+}
+@container (max-width:760px) {
+  .ws-db-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace .ws-database-settings .ws-current-db {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workspace .ws-current-db > button {
+    justify-self: start;
+  }
+}
+@container (max-width:400px) {
+  .workspace .ws-database-settings .ws-current-db {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

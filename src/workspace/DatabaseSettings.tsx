@@ -39,6 +39,7 @@ export default function DatabaseSettings() {
     [selected, setSelected] = useState(""),
     [mode, setMode] = useState("copy"),
     [busy, setBusy] = useState(false),
+    [pending, setPending] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [visible, setVisible] = useState(false),
@@ -47,9 +48,10 @@ export default function DatabaseSettings() {
     try {
       const value = await api<State>("/database");
       setData(value);
-      setError("");
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     }
   }
   useEffect(() => {
@@ -63,6 +65,7 @@ export default function DatabaseSettings() {
   const target = data?.profiles.find((p) => p.id === selected);
   async function action(action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
+    setPending(action);
     setError("");
     setNotice("");
     try {
@@ -71,12 +74,27 @@ export default function DatabaseSettings() {
         { action, id: selected, ...extra },
       );
       if (result.id) setSelected(result.id);
-      setNotice(result.message || "Saved");
       await refresh();
+      if (result.ok === false)
+        setError(result.message || "The operation failed.");
+      else setNotice(result.message || "Saved");
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
+      setPending("");
+    }
+  }
+  async function refreshStatus() {
+    setBusy(true);
+    setPending("refresh");
+    setError("");
+    setNotice("");
+    try {
+      if (await refresh()) setNotice("Database status refreshed.");
+    } finally {
+      setBusy(false);
+      setPending("");
     }
   }
   function submit(event: FormEvent<HTMLFormElement>, operation: string) {
@@ -160,8 +178,12 @@ export default function DatabaseSettings() {
             {data.maintenance ? "Transfer in progress" : "Active connection"}
           </strong>
         </div>
-        <button onClick={() => void refresh()} disabled={busy}>
-          Refresh status
+        <button
+          onClick={() => void refreshStatus()}
+          disabled={busy}
+          aria-busy={pending === "refresh"}
+        >
+          {pending === "refresh" ? "Refreshing…" : "Refresh status"}
         </button>
       </section>
       {data.job && (
@@ -190,12 +212,18 @@ export default function DatabaseSettings() {
           )}
         </section>
       )}
-      <div className="ws-admin-grid">
+      <div className="ws-db-columns">
         <section className="ws-card">
           <h2>Add connection</h2>
           <p className="ws-description">
             Saving a connection does not change the active database.
           </p>
+          {data.is_demo && (
+            <p className="ws-description">
+              Demo access is read-only. Sign in with a production IT account to
+              save connections.
+            </p>
+          )}
           <form onSubmit={(e) => submit(e, "save")}>
             <label>
               Connection name
@@ -297,189 +325,227 @@ export default function DatabaseSettings() {
             <button
               className="ws-primary"
               disabled={disabled || data.maintenance}
+              aria-busy={pending === "save"}
+              title={
+                data.is_demo
+                  ? "Production IT sign-in is required to save a connection."
+                  : undefined
+              }
             >
-              Save connection
+              {pending === "save" ? "Saving connection…" : "Save connection"}
             </button>
           </form>
         </section>
-        <section className="ws-card">
-          <h2>Switch database</h2>
-          <label>
-            Saved connection
-            <select
-              value={selected}
-              onChange={(e) => {
-                setSelected(e.target.value);
-                setVisible(false);
-                setCredential("");
-                setNotice("");
-              }}
-            >
-              <option value="">Choose a connection</option>
-              {data.profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.id === data.active.id
-                    ? " · Active"
-                    : p.id === data.previous_id
-                      ? " · Previous"
-                      : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          {target && (
-            <>
-              <dl className="ws-connection-details">
-                <dt>Database</dt>
-                <dd>{target.database_name}</dd>
-                <dt>Endpoint</dt>
-                <dd>
-                  {target.source === "bound"
-                    ? "Original D1 binding"
-                    : target.source === "d1"
-                      ? target.database_id
-                      : target.host + ":" + target.port}
-                </dd>
-                <dt>Last check</dt>
-                <dd>
-                  {target.checked_at
-                    ? new Date(target.checked_at).toLocaleString("en-IN")
-                    : "No connection check yet"}
-                </dd>
-              </dl>
-              {target.check_message && (
-                <p className="ws-description">{target.check_message}</p>
-              )}
-              {target.has_credential && (
-                <div
-                  className="ws-secret"
-                  onBlur={(e) => {
-                    if (
-                      !e.currentTarget.contains(e.relatedTarget as Node | null)
-                    ) {
-                      setVisible(false);
-                      setCredential("");
-                    }
-                  }}
-                >
-                  <label htmlFor="saved-database-credential">
-                    Saved credential
-                  </label>
-                  <div>
-                    <input
-                      id="saved-database-credential"
-                      readOnly
-                      type={visible ? "text" : "password"}
-                      value={visible ? credential : "••••••••••••"}
-                    />
-                    <button
-                      type="button"
-                      aria-label={
-                        visible
-                          ? "Hide saved credential"
-                          : "Reveal saved credential"
-                      }
-                      aria-pressed={visible}
-                      disabled={disabled}
-                      onClick={() => void reveal()}
-                    >
-                      <Icon name={visible ? "eyeOff" : "eye"} size={17} />
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="ws-form-actions">
-                <button
-                  disabled={disabled || data.maintenance}
-                  onClick={() => void action("check")}
-                >
-                  Test connection
-                </button>
-                {target.id !== data.active.id && target.id !== "original" && (
-                  <button
-                    disabled={disabled || data.maintenance}
-                    onClick={() => void action("initialize")}
-                  >
-                    Initialize empty database
-                  </button>
+        <div className="ws-db-stack">
+          <section className="ws-card">
+            <h2>Switch database</h2>
+            {data.is_demo && (
+              <p className="ws-description">
+                Connection tests and switching require a production IT account.
+              </p>
+            )}
+            {data.maintenance && (
+              <p className="ws-description">
+                Wait for the current transfer before testing or switching
+                connections.
+              </p>
+            )}
+            <label>
+              Saved connection
+              <select
+                value={selected}
+                onChange={(e) => {
+                  setSelected(e.target.value);
+                  setVisible(false);
+                  setCredential("");
+                  setNotice("");
+                }}
+              >
+                <option value="">Choose a connection</option>
+                {data.profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.id === data.active.id
+                      ? " · Active"
+                      : p.id === data.previous_id
+                        ? " · Previous"
+                        : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {target && (
+              <>
+                <dl className="ws-connection-details">
+                  <dt>Database</dt>
+                  <dd>{target.database_name}</dd>
+                  <dt>Endpoint</dt>
+                  <dd>
+                    {target.source === "bound"
+                      ? "Original D1 binding"
+                      : target.source === "d1"
+                        ? target.database_id
+                        : target.host + ":" + target.port}
+                  </dd>
+                  <dt>Last check</dt>
+                  <dd>
+                    {target.checked_at
+                      ? new Date(target.checked_at).toLocaleString("en-IN")
+                      : "No connection check yet"}
+                  </dd>
+                </dl>
+                {target.check_message && (
+                  <p className="ws-description">{target.check_message}</p>
                 )}
-              </div>
-              {target.id !== data.active.id && (
-                <form onSubmit={(e) => submit(e, "activate")}>
-                  <label>
-                    Existing data
-                    <select
-                      name="mode"
-                      value={mode}
-                      onChange={(e) => setMode(e.target.value)}
-                    >
-                      <option value="copy">Copy current data</option>
-                      <option value="prepared">Use prepared database</option>
-                    </select>
-                  </label>
-                  <p className="ws-description">
-                    {mode === "copy"
-                      ? "Copies and verifies the current records. Destination application tables must be empty."
-                      : "Uses the destination’s existing records as they are. Your current dataset is not merged. Reverting to a previous database does not include newer changes."}
-                  </p>
-                  <label>
-                    Confirm connection name
-                    <input
-                      name="confirm"
-                      required
-                      autoComplete="off"
-                      placeholder={target.name}
-                    />
-                  </label>
-                  <button
-                    className="ws-primary"
-                    disabled={disabled || data.maintenance}
+                {target.has_credential && (
+                  <div
+                    className="ws-secret"
+                    onBlur={(e) => {
+                      if (
+                        !e.currentTarget.contains(
+                          e.relatedTarget as Node | null,
+                        )
+                      ) {
+                        setVisible(false);
+                        setCredential("");
+                      }
+                    }}
                   >
-                    Activate database
+                    <label htmlFor="saved-database-credential">
+                      Saved credential
+                    </label>
+                    <div>
+                      <input
+                        id="saved-database-credential"
+                        readOnly
+                        type={visible ? "text" : "password"}
+                        value={visible ? credential : "••••••••••••"}
+                      />
+                      <button
+                        type="button"
+                        aria-label={
+                          visible
+                            ? "Hide saved credential"
+                            : "Reveal saved credential"
+                        }
+                        aria-pressed={visible}
+                        disabled={disabled}
+                        onClick={() => void reveal()}
+                      >
+                        <Icon name={visible ? "eyeOff" : "eye"} size={17} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="ws-form-actions">
+                  <button
+                    disabled={disabled || data.maintenance}
+                    title={
+                      data.is_demo
+                        ? "Sign in with a production IT account to test connections."
+                        : data.maintenance
+                          ? "Wait for the current transfer to finish."
+                          : undefined
+                    }
+                    aria-busy={pending === "check"}
+                    onClick={() => void action("check")}
+                  >
+                    {pending === "check"
+                      ? "Testing connection…"
+                      : "Test connection"}
                   </button>
-                </form>
-              )}
-              {data.job?.phase === "failed" &&
-                data.job.target === target.id &&
-                data.job.target !== data.previous_id && (
-                  <form onSubmit={(e) => submit(e, "reset_incomplete")}>
-                    <h3>Reset incomplete copy</h3>
+                  {target.id !== data.active.id && target.id !== "original" && (
+                    <button
+                      disabled={disabled || data.maintenance}
+                      aria-busy={pending === "initialize"}
+                      onClick={() => void action("initialize")}
+                    >
+                      {pending === "initialize"
+                        ? "Initializing…"
+                        : "Initialize empty database"}
+                    </button>
+                  )}
+                </div>
+                {target.id !== data.active.id && (
+                  <form onSubmit={(e) => submit(e, "activate")}>
+                    <label>
+                      Existing data
+                      <select
+                        name="mode"
+                        value={mode}
+                        onChange={(e) => setMode(e.target.value)}
+                      >
+                        <option value="copy">Copy current data</option>
+                        <option value="prepared">Use prepared database</option>
+                      </select>
+                    </label>
                     <p className="ws-description">
-                      Removes application tables and records from this failed
-                      destination so you can initialize and retry. The active
-                      database is untouched.
+                      {mode === "copy"
+                        ? "Copies and verifies the current records. Destination application tables must be empty."
+                        : "Uses the destination’s existing records as they are. Your current dataset is not merged. Reverting to a previous database does not include newer changes."}
                     </p>
                     <label>
-                      Confirm destination name
+                      Confirm connection name
                       <input
                         name="confirm"
                         required
+                        autoComplete="off"
                         placeholder={target.name}
                       />
                     </label>
-                    <button disabled={disabled || data.maintenance}>
-                      Discard incomplete copy
+                    <button
+                      className="ws-primary"
+                      disabled={disabled || data.maintenance}
+                    >
+                      {pending === "activate"
+                        ? "Starting transfer…"
+                        : "Activate database"}
                     </button>
                   </form>
                 )}
-            </>
-          )}
-        </section>
+                {data.job?.phase === "failed" &&
+                  data.job.target === target.id &&
+                  data.job.target !== data.previous_id && (
+                    <form onSubmit={(e) => submit(e, "reset_incomplete")}>
+                      <h3>Reset incomplete copy</h3>
+                      <p className="ws-description">
+                        Removes application tables and records from this failed
+                        destination so you can initialize and retry. The active
+                        database is untouched.
+                      </p>
+                      <label>
+                        Confirm destination name
+                        <input
+                          name="confirm"
+                          required
+                          placeholder={target.name}
+                        />
+                      </label>
+                      <button disabled={disabled || data.maintenance}>
+                        Discard incomplete copy
+                      </button>
+                    </form>
+                  )}
+              </>
+            )}
+          </section>
+          <section className="ws-card">
+            <h2>Connection history</h2>
+            {data.logs.length ? (
+              data.logs.map((log, i) => (
+                <p key={i}>
+                  <b>{log.action.replaceAll("_", " ")}</b> · {log.detail}
+                  <small>
+                    {new Date(log.created_at).toLocaleString("en-IN")}
+                  </small>
+                </p>
+              ))
+            ) : (
+              <p>No connection changes recorded.</p>
+            )}
+          </section>
+        </div>
       </div>
-      <section className="ws-card">
-        <h2>Connection history</h2>
-        {data.logs.length ? (
-          data.logs.map((log, i) => (
-            <p key={i}>
-              <b>{log.action.replaceAll("_", " ")}</b> · {log.detail}
-              <small>{new Date(log.created_at).toLocaleString("en-IN")}</small>
-            </p>
-          ))
-        ) : (
-          <p>No connection changes recorded.</p>
-        )}
-      </section>
     </div>
   );
 }
