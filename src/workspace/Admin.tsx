@@ -1,3 +1,4 @@
+import Select from "../Select";
 import InstitutionAdmin from "./InstitutionAdmin";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -210,7 +211,7 @@ export default function Admin({
                   </label>
                   <label>
                     Bureau / Cell
-                    <select
+                    <Select
                       name="bureau"
                       value={accountBureau}
                       onChange={(event) => setAccountBureau(event.target.value)}
@@ -222,33 +223,33 @@ export default function Admin({
                             {unit.name}
                           </option>
                         ))}
-                    </select>
+                    </Select>
                   </label>
                   <label>
                     Account availability
-                    <select
+                    <Select
                       key={account.id + "-active"}
                       name="active"
                       defaultValue={String(account.active ?? 1)}
                     >
                       <option value="1">Active</option>
                       <option value="0">Disabled</option>
-                    </select>
+                    </Select>
                   </label>
                   <label title="Managers review officials in their configured reporting tree.">
                     Access level
-                    <select
+                    <Select
                       name="role"
                       value={accountRole}
                       onChange={(e) => setAccountRole(e.target.value)}
                     >
                       <option value="official">Official</option>
                       <option value="manager">Manager</option>
-                    </select>
+                    </Select>
                   </label>
                   <label>
                     Report access
-                    <select
+                    <Select
                       key={(account?.id || "") + accountRole}
                       name="report_scope"
                       disabled={accountRole === "official"}
@@ -266,7 +267,7 @@ export default function Admin({
                           </option>
                         </>
                       )}
-                    </select>
+                    </Select>
                   </label>
                   <OfficialPicker
                     key={(account?.id || "manager") + accountBureau}
@@ -479,11 +480,11 @@ export default function Admin({
             </label>
             <label>
               Type
-              <select name="unit_type">
+              <Select name="unit_type">
                 <option>Bureau</option>
                 <option>Cell</option>
                 <option>Programme</option>
-              </select>
+              </Select>
             </label>
             <label className="ws-checkbox">
               <input name="active" type="checkbox" defaultChecked />

@@ -1,3 +1,4 @@
+import Select from "../Select";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "./api";
@@ -72,14 +73,14 @@ export default function EmailSettings({
         <form onSubmit={submit}>
           <label>
             Provider
-            <select
+            <Select
               name="provider"
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
             >
               <option value="resend">Resend</option>
               <option value="sendgrid">SendGrid</option>
-            </select>
+            </Select>
           </label>
           <SecretField
             key={provider}

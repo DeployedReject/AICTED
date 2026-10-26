@@ -1,3 +1,4 @@
+import Select from "./Select";
 import { loginDesignations } from "../packages/shared/designations";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -249,7 +250,7 @@ export default function App() {
                       <div className="field">
                         <label htmlFor="designation">Designation</label>
                         <div className="select-wrap">
-                          <select
+                          <Select
                             id="designation"
                             name="designation"
                             required
@@ -261,7 +262,7 @@ export default function App() {
                             {designations.map((rank) => (
                               <option key={rank}>{rank}</option>
                             ))}
-                          </select>
+                          </Select>
                           <Icon name="chevron" size={17} />
                         </div>
                       </div>

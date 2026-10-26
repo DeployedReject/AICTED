@@ -1,3 +1,4 @@
+import Select from "../Select";
 import { useEffect, useState } from "react";
 import type { Institution, Official } from "../../packages/shared/types";
 import { api } from "./api";
@@ -166,13 +167,13 @@ export default function InstitutionAdmin({
                 ))}
                 <label>
                   Record availability
-                  <select
+                  <Select
                     name="active"
                     defaultValue={String(selected?.active ?? 1)}
                   >
                     <option value="1">Active</option>
                     <option value="0">Inactive</option>
-                  </select>
+                  </Select>
                 </label>
                 <div className="ws-form-actions">
                   <button className="ws-primary" disabled={busy}>
@@ -256,13 +257,13 @@ export default function InstitutionAdmin({
                 />
                 <label>
                   Account access
-                  <select
+                  <Select
                     name="active"
                     defaultValue={String(account?.active ?? 1)}
                   >
                     <option value="1">Active</option>
                     <option value="0">Disabled</option>
-                  </select>
+                  </Select>
                 </label>
                 {account?.id === "0002" && (
                   <p>The shared test account cannot be changed.</p>
@@ -297,7 +298,7 @@ export default function InstitutionAdmin({
               >
                 <label>
                   Receiving bureau
-                  <select
+                  <Select
                     name="bureau"
                     value={bureau}
                     onChange={(event) => setBureau(event.target.value)}
@@ -307,7 +308,7 @@ export default function InstitutionAdmin({
                         {unit.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <OfficialPicker
                   key={bureau}

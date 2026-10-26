@@ -292,7 +292,7 @@
 .ws-filters > input {
   max-width: 260px;
 }
-.ws-filters > select {
+.ws-filters > :is(select, .themed-select) {
   max-width: 180px;
 }
 .ws-filters > label {

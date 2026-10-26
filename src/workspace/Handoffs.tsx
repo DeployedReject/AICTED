@@ -1,3 +1,4 @@
+import Select from "../Select";
 import { useEffect, useState } from "react";
 import type { Bootstrap, CaseRecord } from "../../packages/shared/types";
 import OfficialPicker from "./OfficialPicker";
@@ -179,7 +180,7 @@ export default function Handoffs({
               >
                 <label>
                   Decision
-                  <select name="decision">
+                  <Select name="decision">
                     {request.target_bureau === boot.user.bureau ? (
                       <>
                         <option>Approved</option>
@@ -188,7 +189,7 @@ export default function Handoffs({
                     ) : (
                       <option>Cancelled</option>
                     )}
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   Decision note

@@ -1,3 +1,4 @@
+import Select from "../Select";
 import useLiveUpdates from "../workspace/useLiveUpdates";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { BrandMark } from "../Icons";
@@ -283,7 +284,7 @@ function Register({ boot, done }: { boot: Boot; done: (id: string) => void }) {
       </label>
       <label>
         Receiving bureau
-        <select name="bureau" required defaultValue="">
+        <Select name="bureau" required defaultValue="">
           <option value="" disabled>
             Choose a bureau
           </option>
@@ -292,7 +293,7 @@ function Register({ boot, done }: { boot: Boot; done: (id: string) => void }) {
               {route.name}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       {!boot.routes.length && (
         <p className="ws-error">
@@ -546,13 +547,13 @@ function Detail({
                 {action === "review" && (
                   <label>
                     Rating
-                    <select name="rating" defaultValue="5">
+                    <Select name="rating" defaultValue="5">
                       {[5, 4, 3, 2, 1].map((r) => (
                         <option key={r} value={r}>
                           {r} / 5
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
                 <label>

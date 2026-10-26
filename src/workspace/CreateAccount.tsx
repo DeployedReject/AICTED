@@ -1,3 +1,4 @@
+import Select from "../Select";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type { Official } from "../../packages/shared/types";
@@ -78,7 +79,7 @@ export default function CreateAccount({
         </label>
         <label>
           Bureau
-          <select
+          <Select
             name="bureau"
             required
             value={bureau}
@@ -92,11 +93,11 @@ export default function CreateAccount({
                   {u.name}
                 </option>
               ))}
-          </select>
+          </Select>
         </label>
         <label>
           Role
-          <select
+          <Select
             name="role"
             value={role}
             onChange={(e) => setRole(e.target.value)}
@@ -104,11 +105,11 @@ export default function CreateAccount({
             <option value="official">Official</option>
             <option value="manager">Manager</option>
             <option value="it">IT</option>
-          </select>
+          </Select>
         </label>
         <label title="Personal covers assigned work. Team includes the reporting tree. Bureau Head / Cell In-charge covers the full assigned bureau.">
           Report access
-          <select
+          <Select
             name="report_scope"
             key={role}
             defaultValue={role === "manager" ? "team" : "personal"}
@@ -122,7 +123,7 @@ export default function CreateAccount({
                 <option value="bureau">Bureau Head / Cell In-charge</option>
               </>
             )}
-          </select>
+          </Select>
         </label>
         <OfficialPicker
           name="manager_id"

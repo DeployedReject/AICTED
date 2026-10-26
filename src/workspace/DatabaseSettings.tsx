@@ -1,3 +1,4 @@
+import Select from "../Select";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "./api";
@@ -252,14 +253,14 @@ export default function DatabaseSettings() {
                   </span>
                 </span>
               </span>
-              <select
+              <Select
                 name="source"
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
               >
                 <option value="d1">Cloudflare D1</option>
                 <option value="postgres">PostgreSQL</option>
-              </select>
+              </Select>
             </label>
             <label>
               Database name
@@ -352,7 +353,7 @@ export default function DatabaseSettings() {
             )}
             <label>
               Saved connection
-              <select
+              <Select
                 value={selected}
                 onChange={(e) => {
                   setSelected(e.target.value);
@@ -372,7 +373,7 @@ export default function DatabaseSettings() {
                         : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             {target && (
               <>
@@ -470,14 +471,14 @@ export default function DatabaseSettings() {
                   <form onSubmit={(e) => submit(e, "activate")}>
                     <label>
                       Existing data
-                      <select
+                      <Select
                         name="mode"
                         value={mode}
                         onChange={(e) => setMode(e.target.value)}
                       >
                         <option value="copy">Copy current data</option>
                         <option value="prepared">Use prepared database</option>
-                      </select>
+                      </Select>
                     </label>
                     <p className="ws-description">
                       {mode === "copy"

@@ -1,3 +1,4 @@
+import Select from "../Select";
 import useLiveUpdates from "./useLiveUpdates";
 import type { Analytics } from "../../packages/shared/reports";
 import CaseNotices from "./CaseNotices";
@@ -276,9 +277,7 @@ export default function Workspace() {
           </span>
         </a>
 
-        {isIT && (
-          <span className="ws-portal-badge">Administration Panel</span>
-        )}
+        {isIT && <span className="ws-portal-badge">Administration Panel</span>}
         <SlidingNav selected={page === "Cases" ? "Cases-" + casesView : page}>
           {(
             (isIT
@@ -773,7 +772,7 @@ function CaseList({
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-            <select
+            <Select
               aria-label="Tag filter"
               value={tag}
               onChange={(e) => setTag(e.target.value)}
@@ -784,7 +783,7 @@ function CaseList({
                   {t.label}
                 </option>
               ))}
-            </select>
+            </Select>
             <InstitutionPicker
               label="Filter institution"
               name="filter_institution"
@@ -792,7 +791,7 @@ function CaseList({
             />
             {all && (
               <>
-                <select
+                <Select
                   aria-label="Status filter"
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
@@ -806,8 +805,8 @@ function CaseList({
                   ].map((s) => (
                     <option key={s}>{s}</option>
                   ))}
-                </select>
-                <select
+                </Select>
+                <Select
                   aria-label="Bureau filter"
                   value={bureau}
                   onChange={(e) => setBureau(e.target.value)}
@@ -820,7 +819,7 @@ function CaseList({
                         {bureauName(b)}
                       </option>
                     ))}
-                </select>
+                </Select>
                 <input
                   aria-label="Region filter"
                   placeholder="Region"
@@ -1096,21 +1095,21 @@ function Board({
                 >
                   <label>
                     Request
-                    <select name="kind">
+                    <Select name="kind">
                       {c.cancellation_state === "Awaiting review" && (
                         <option value="cancellation">Cancellation</option>
                       )}
                       {c.institution_escalation === "Awaiting review" && (
                         <option value="escalation">Escalation</option>
                       )}
-                    </select>
+                    </Select>
                   </label>
                   <label>
                     Decision
-                    <select name="decision">
+                    <Select name="decision">
                       <option>Approved</option>
                       <option>Rejected</option>
-                    </select>
+                    </Select>
                   </label>
                   <label>
                     Decision note
@@ -1159,11 +1158,11 @@ function Board({
               >
                 <label>
                   Decision
-                  <select name="decision">
+                  <Select name="decision">
                     <option>Approved</option>
                     <option>Returned</option>
                     <option>Rejected</option>
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   Decision note
@@ -1302,7 +1301,7 @@ function Board({
               <>
                 <label>
                   Update case
-                  <select
+                  <Select
                     aria-label="Case action"
                     value={action}
                     onChange={(e) => setAction(e.target.value)}
@@ -1322,7 +1321,7 @@ function Board({
                         )}
                       </>
                     )}
-                  </select>
+                  </Select>
                 </label>
                 {action && (
                   <form
@@ -1342,7 +1341,7 @@ function Board({
                       <>
                         <label>
                           Status
-                          <select name="status" defaultValue={c.status}>
+                          <Select name="status" defaultValue={c.status}>
                             {[
                               "Pending",
                               "Under process",
@@ -1350,7 +1349,7 @@ function Board({
                             ].map((s) => (
                               <option key={s}>{s}</option>
                             ))}
-                          </select>
+                          </Select>
                         </label>
                         <label>
                           Next action
@@ -1424,11 +1423,11 @@ function Board({
                 </label>
                 <label>
                   Relation
-                  <select name="kind">
+                  <Select name="kind">
                     <option>Related</option>
                     {boot.user.role === "manager" && <option>Duplicate</option>}
                     <option>Unrelated</option>
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   Reason
@@ -1603,11 +1602,11 @@ function NewCase({
             </label>
             <label>
               Priority
-              <select name="priority">
+              <Select name="priority">
                 <option>Routine</option>
                 <option>High</option>
                 <option>Urgent</option>
-              </select>
+              </Select>
             </label>
           </div>
           <label>
@@ -1622,7 +1621,7 @@ function NewCase({
           </label>
           <label>
             Original language
-            <select
+            <Select
               value={language}
               onChange={(e) => {
                 setLanguage(e.target.value);
@@ -1646,7 +1645,7 @@ function NewCase({
                   {l[0].toUpperCase() + l.slice(1)}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {translation && (
             <div className="ws-card">
@@ -1978,14 +1977,14 @@ function Reports({ version, boot }: { version: number; boot: Bootstrap }) {
         </label>
         <label>
           Bureau
-          <select name="bureau" defaultValue="">
+          <Select name="bureau" defaultValue="">
             <option value="">All permitted bureaus</option>
             {boot.units.map((unit) => (
               <option key={unit.code} value={unit.code}>
                 {unit.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           Region
@@ -1993,7 +1992,7 @@ function Reports({ version, boot }: { version: number; boot: Bootstrap }) {
         </label>
         <label>
           Status
-          <select name="status" defaultValue="">
+          <Select name="status" defaultValue="">
             <option value="">All statuses</option>
             {[
               "Pending",
@@ -2003,7 +2002,7 @@ function Reports({ version, boot }: { version: number; boot: Bootstrap }) {
             ].map((status) => (
               <option key={status}>{status}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <button className="ws-primary">Apply filters</button>
       </form>
