@@ -1319,3 +1319,112 @@ body {
   margin-top: clamp(16px, 2.8cqh, 24px);
 }
 
+
+/* Shared flat dropdowns; retain native controls on browsers without custom pickers. */
+:root select:not([multiple]) {
+  appearance: none;
+  cursor: pointer;
+  padding-inline-end: 34px;
+  border-radius: 2px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+:root .select-wrap > svg {
+  display: none;
+}
+:root select:not([multiple]):hover:not(:disabled) {
+  border-color: var(--muted);
+}
+:root select:not([multiple]):focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-color: var(--blue);
+}
+:root select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+:root select option {
+  background: var(--input);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+@supports (appearance: base-select) {
+  :root select:not([multiple]),
+  :root select:not([multiple])::picker(select) {
+    appearance: base-select;
+  }
+  :root select:not([multiple]) {
+    background-image: none;
+    padding-inline-end: 11px;
+    align-items: center;
+    gap: 12px;
+  }
+  :root select::picker-icon {
+    color: var(--muted);
+    font-size: 11px;
+    transition: rotate 160ms ease;
+  }
+  :root select:open::picker-icon {
+    rotate: 180deg;
+  }
+  :root select::picker(select) {
+    margin-block: 5px;
+    padding: 5px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--input);
+    color: var(--text);
+    box-shadow: 0 6px 18px #00000018;
+    max-block-size: min(320px, 48dvh);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) var(--input);
+  }
+  :root select option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-block-size: 34px;
+    padding: 8px 10px;
+    border-radius: 1px;
+    font-size: 13px;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  :root select option:hover,
+  :root select option:focus {
+    background: var(--subtle);
+    color: var(--text);
+    outline: none;
+  }
+  :root select option:checked {
+    background: color-mix(in srgb, var(--blue) 12%, var(--input));
+    color: var(--text);
+    box-shadow: inset 2px 0 var(--orange);
+    font-weight: 600;
+  }
+  :root select option::checkmark {
+    color: var(--blue);
+    font-size: 12px;
+  }
+  :root select option:disabled {
+    color: var(--muted);
+    font-weight: 400;
+    box-shadow: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root select,
+  :root select::picker-icon {
+    transition: none;
+  }
+}
