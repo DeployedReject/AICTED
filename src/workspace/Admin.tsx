@@ -182,51 +182,56 @@ export default function Admin({
                   setAccountRole(o?.role || "official");
                 }}
               />
-              <label title="Managers review officials in their configured reporting tree.">
-                Access level
-                <select
-                  name="role"
-                  value={accountRole}
-                  onChange={(e) => setAccountRole(e.target.value)}
-                >
-                  <option value="official">Official</option>
-                  <option value="manager">Manager</option>
-                </select>
-              </label>
-              <label>
-                Report access
-                <select
-                  key={(account?.id || "") + accountRole}
-                  name="report_scope"
-                  disabled={accountRole === "official"}
-                  defaultValue={
-                    account?.report_scope === "bureau" ? "bureau" : "team"
-                  }
-                >
-                  {accountRole === "official" ? (
-                    <option value="personal">Personal workload</option>
-                  ) : (
-                    <>
-                      <option value="team">Reporting team</option>
-                      <option value="bureau">
-                        Bureau Head / Cell In-charge
-                      </option>
-                    </>
-                  )}
-                </select>
-              </label>
-              <OfficialPicker
-                key={account?.id || "manager"}
-                name="manager_id"
-                label="Reporting manager"
-                officials={data.officials}
-                role="manager"
-                bureau={account?.bureau || ""}
-                value={account?.manager_id || ""}
-              />
-              <button disabled={busy} className="ws-primary">
-                Save
-              </button>
+              {account && (
+                <>
+                  <label title="Managers review officials in their configured reporting tree.">
+                    Access level
+                    <select
+                      name="role"
+                      value={accountRole}
+                      onChange={(e) => setAccountRole(e.target.value)}
+                    >
+                      <option value="official">Official</option>
+                      <option value="manager">Manager</option>
+                    </select>
+                  </label>
+                  <label>
+                    Report access
+                    <select
+                      key={(account?.id || "") + accountRole}
+                      name="report_scope"
+                      disabled={accountRole === "official"}
+                      defaultValue={
+                        account?.report_scope === "bureau" ? "bureau" : "team"
+                      }
+                    >
+                      {accountRole === "official" ? (
+                        <option value="personal">Personal workload</option>
+                      ) : (
+                        <>
+                          <option value="team">Reporting team</option>
+                          <option value="bureau">
+                            Bureau Head / Cell In-charge
+                          </option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  <OfficialPicker
+                    key={account?.id || "manager"}
+                    name="manager_id"
+                    label="Reporting manager"
+                    excludeId={account?.id || ""}
+                    officials={data.officials}
+                    role="manager"
+                    bureau={account?.bureau || ""}
+                    value={account?.manager_id || ""}
+                  />
+                  <button disabled={busy} className="ws-primary">
+                    Save
+                  </button>
+                </>
+              )}
             </form>
             {account && (
               <form

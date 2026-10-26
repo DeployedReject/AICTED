@@ -3235,3 +3235,43 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Wrap settings cards into complete rows, with no capped first card or empty columns. */
+.workspace .ws-admin-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+.workspace .ws-admin-grid > .ws-card {
+  flex: 1 1 21rem;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+.workspace .ws-admin-grid > .ws-card:first-child {
+  max-width: 100%;
+}
+.workspace .ws-admin .ws-admin-form {
+  width: 100%;
+  max-width: 100%;
+}
+.workspace .ws-admin > .ws-admin-form form,
+.workspace .ws-admin > .ws-admin-form:is(form) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  align-items: start;
+}
+.workspace .ws-admin > .ws-admin-form :is(button[type="submit"], .ws-primary) {
+  justify-self: start;
+  align-self: end;
+}
+.workspace .ws-admin > .ws-admin-form .ws-error {
+  grid-column: 1/-1;
+}
+.workspace .ws-setup-guide {
+  width: 100%;
+  max-width: 100%;
+}
+.workspace .ws-database-settings .ws-current-db > div {
+  flex: 1 1 12rem;
+}

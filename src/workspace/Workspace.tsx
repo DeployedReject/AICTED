@@ -28,8 +28,6 @@ import { bureauName, registerUnits } from "../../packages/shared/catalog";
 import { Scene, SlidingNav, Counter, reduced, NavIcon } from "./Motion";
 import ReportCharts from "./ReportCharts";
 import ReportPeriods from "./ReportPeriods";
-import caseGlyph from "../../Assets/glyphs/file-svgrepo-com.svg";
-import mailGlyph from "../../Assets/glyphs/mail-svgrepo-com.svg";
 
 type Page =
   | "Tags"
@@ -305,16 +303,7 @@ export default function Workspace() {
                 }}
               >
                 <span aria-hidden="true">
-                  {p === "Cases" || p === "Messages" ? (
-                    <i
-                      className="ws-nav-glyph"
-                      style={{
-                        maskImage: `url(${p === "Cases" ? caseGlyph : mailGlyph})`,
-                      }}
-                    />
-                  ) : (
-                    <NavIcon name={p} />
-                  )}
+                  <NavIcon name={p} />
                 </span>
                 {p === "My Work"
                   ? user.role === "manager"

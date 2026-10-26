@@ -151,6 +151,29 @@ export function NavIcon({ name }: { name: string }) {
       <rect x="8" y="8" width="10" height="10" />
     </>
   );
+  paths.Cases = (
+    <>
+      <path d="M3 3h6l2 2h6v12H3z" />
+      <path d="M6 9h8M6 12h6" />
+    </>
+  );
+  paths.Tags = (
+    <>
+      <path d="M2 3h8l8 8-7 7-9-9z" />
+      <circle cx="6" cy="7" r="1" />
+    </>
+  );
+  paths.Guide = (
+    <>
+      <path d="M10 4v13M10 5C8 3 5 3 2 4v12c3-1 6-1 8 1 2-2 5-2 8-1V4c-3-1-6-1-8 1z" />
+    </>
+  );
+  paths.Messages = (
+    <>
+      <path d="M2 3h16v11H8l-5 4v-4H2z" />
+      <path d="M5 7h10M5 10h7" />
+    </>
+  );
   paths.Server = paths.Administration;
   paths.Bureaus = paths.Institutions;
   paths.Accounts = paths.Team;
