@@ -10,6 +10,7 @@ export default function IndiaMap() {
   const packetRef = useRef<SVGGElement>(null);
   const activeRouteRef = useRef<SVGPathElement>(null);
   const localReadyRef = useRef(false);
+  const localSitesRef = useRef(new Map<string, SVGGElement>());
   const [leg, setLeg] = useState(0);
   const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 761px)').matches);
   const [localMaps, setLocalMaps] = useState<Record<string, LocalMapData>>({});
@@ -61,6 +62,11 @@ export default function IndiaMap() {
       svg!.style.setProperty('--marker-scale', (width / 630).toFixed(4));
       svg!.style.setProperty('--detail-opacity', Math.max(0, Math.min(1, (180 - width) / 90)).toFixed(3));
       svg!.style.setProperty('--overview-opacity', Math.max(0, Math.min(1, (width - 100) / 140)).toFixed(3));
+      for (const hub of map.hubs) {
+        const distance = Math.hypot(x - hub.x, y - hub.y);
+        const t = Math.max(0, Math.min(1, (distance - 8) / 28));
+        localSitesRef.current.get(hub.code)?.setAttribute('opacity', String(1 - t * t * (3 - 2 * t)));
+      }
     }
 
     function measure() {
@@ -148,6 +154,7 @@ export default function IndiaMap() {
     <div className="map-wrap">
       <svg ref={svgRef} className="india-map" viewBox={`${initialCamera.x - initialCamera.width / 2} ${initialCamera.y - initialCamera.width / 2} ${initialCamera.width} ${initialCamera.width}`} focusable="false">
         <defs>
+          <clipPath id="local-map-bounds"><rect x="-44" y="-44" width="88" height="88" /></clipPath>
           <pattern id="map-dots" width="5" height="5" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".4" className="land-dot" /></pattern>
           <clipPath id="india-clip">{map.outlines.map((d, i) => <path key={i} d={d} fillRule="evenodd" />)}</clipPath>
         </defs>
@@ -160,11 +167,10 @@ export default function IndiaMap() {
         <g className="overview-texture" clipPath="url(#india-clip)"><rect width="600" height="650" fill="url(#map-dots)" /></g>
         <g className="local-links">{map.nodes.filter((_, i) => i % 2 === 0).map((n, i) => <path key={i} d={`M${n.x},${n.y}L${map.hubs[n.hub].x},${map.hubs[n.hub].y}`} vectorEffect="non-scaling-stroke" />)}</g>
         <g className="network-links">{map.links.map((d, i) => <path key={i} d={d} vectorEffect="non-scaling-stroke" />)}</g>
-        <g className="local-details">{[current.fromIndex, current.toIndex].map(index => {
-          const hub = map.hubs[index];
+        <g className="local-details">{map.hubs.map(hub => {
           const site = localMaps[hub.code];
           if (!site) return null;
-          return <g key={site.code} transform={`translate(${hub.x} ${hub.y})`}>
+          return <g key={site.code} ref={node => { if (node) localSitesRef.current.set(site.code, node); else localSitesRef.current.delete(site.code); }} transform={`translate(${hub.x} ${hub.y})`} clipPath="url(#local-map-bounds)" opacity="0">
             <rect className="local-ground" x="-44" y="-44" width="88" height="88" />
             <g className="local-parks">{site.parks.map((d, i) => <path key={i} d={d} />)}</g>
             <g className="local-water">{site.water.map((d, i) => <path key={i} d={d} />)}</g>
