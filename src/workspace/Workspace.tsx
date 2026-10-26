@@ -276,9 +276,9 @@ export default function Workspace() {
           </span>
         </a>
 
-        <span className="ws-portal-badge">
-          {isIT ? "Administration Panel" : "Official Workspace"}
-        </span>
+        {isIT && (
+          <span className="ws-portal-badge">Administration Panel</span>
+        )}
         <SlidingNav selected={page === "Cases" ? "Cases-" + casesView : page}>
           {(
             (isIT
