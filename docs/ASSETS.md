@@ -45,7 +45,7 @@ vectors from **OpenStreetMap contributors**, licensed under
 Each extract records its API source URL and centre. Names are copied from OSM;
 unnamed features are left unnamed. Local insets are enlarged relative to the
 country geometry for this decorative animation; they are not a continuous-scale
-navigation map, and city anchors are not certified office sites.
+navigation map. Animated checkpoints use mapped office sites or their host campus, with precision and sources recorded below.
 
 The nine extracts are fetched once during asset preparation, not by visitors.
 The ignored helper `scripts/prepare-osm-vectors.py` builds the prepared paths.
@@ -66,3 +66,21 @@ use the SIL Open Font License in `public/fonts/LIBERATION-LICENSE.txt`. WOFF2
 files were losslessly compressed from installed source fonts; family names are
 unchanged in the font data. UI forms use sans-serif, headings use serif, and
 identifiers/timestamps use monospace. There are no external font requests.
+
+## Animated office checkpoints (27 October 2026)
+
+The seven itinerary checkpoints replace the former city-centre coordinates. Country markers, packet routes and local OSM extracts share the same centres. All assets remain offline vectors; visitors make no geocoding requests.
+
+Published addresses: [AICTE office-location annexure](https://aicte.gov.in/sites/default/files/AICTE-ILL-TENDER.pdf), cross-checked against the supplied reference. Address documents are historical; these are mapped locations, not a certified current office register or surveyed entrance coordinates.
+
+| Checkpoint | Latitude | Longitude | Position source and precision |
+| --- | --- | --- | --- |
+| HQ — New Delhi | 28.5357744 | 77.1543956 | [building](https://www.openstreetmap.org/node/10750253403) — AICTE headquarters, Nelson Mandela Marg, Vasant Kunj |
+| NRO — Kanpur | 26.4912748 | 80.2880232 | [host campus map centre](https://www.gpkanpur.co.in/contact-us.php) — Government Polytechnic campus, Vikas Nagar, Kanpur |
+| CRO — Bhopal | 23.3013875 | 77.3602031 | [mapped office pin](https://www.bharatibiz.com/en/aicte-regional-office_2r-0755-274-4313) — AICTE Central Regional Office, Airport Bypass Road, Gandhi Nagar |
+| ERO — Kolkata | 22.5602000 | 88.4109000 | [host campus](https://en.wikipedia.org/wiki/Government_College_of_Engineering_and_Leather_Technology) — Government College of Engineering and Leather Technology, LB Block, Salt Lake |
+| SCRO — Hyderabad | 17.4380689 | 78.4439615 | [host building](https://www.openstreetmap.org/way/41712706) — Swarna Jayanthi Complex, Ameerpet |
+| SWRO — Bengaluru | 12.9737653 | 77.5811388 | [mapped AICTE site](https://www.openstreetmap.org/node/12137671669) — Mapped AICTE site, Palace Road |
+| SRO — Chennai | 13.0662143 | 80.2472998 | [office listing pin](https://www.top-rated.online/cities/Chennai/place/p/10127409/AICTE%2BSouthern%2BRegional%2BOffice,%2BCHENNAI) — Shastri Bhavan, 26 Haddows Road, Nungambakkam |
+
+Hyderabad uses the host complex centre rather than claiming an exact west-block room location. Kolkata and Kanpur use their published host-campus map positions. Bengaluru uses the mapped AICTE Palace Road site named AICTE Indovation Centre in OSM; its individual PK Block entrance has not been independently surveyed. Bhopal uses the office listing’s Plus Code (8926+H34, recovered near Bhopal). HQ and Chennai use mapped office locations. Chandigarh and Mumbai do not occur in the animation itinerary; their existing non-animated city markers remain approximate and are explicitly recorded as such in the source metadata.
