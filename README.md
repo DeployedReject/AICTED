@@ -74,9 +74,7 @@ limits prevent unbounded storage growth. Changes persist and are visible to othe
   Original case text stays unchanged; translation is shown separately for review.
   The deployed BGE model passed a bounded real inference test. The public demo cannot exercise AI.
 
-Production accounts and reporting lines must be provisioned using verified office
-orders. The ignored `scripts/provision-official.py` prepares password-hashed SQL
-for review, including the initial IT account. No production identities are invented.
+Production accounts and reporting lines should follow verified office orders. Create the first production administrator through the protected setup form described below; no provisioning script is required.
 Institution accounts, intake managers and institution records are configured through Administration Panel → Institutions. Password recovery supports all three portals after a verified email provider is configured. Contact email settings alone do not activate a mail provider.
 The application starts on `aicted-workspace`. IT can configure and activate another
 D1 database or a public TLS PostgreSQL 16+ connection through Database settings.
@@ -141,10 +139,16 @@ Validation includes frontend/Worker type checks and production build; API integr
 
 ## Production setup
 
-Sign in through `/it` first, then open Server setup → Create administrator account.
-Use the locally stored, ignored `seed/bootstrap-token.txt`
-setup code to create the first production IT account. Setup is one-time and atomic.
-Do not publish that code. Cloudflare's `BOOTSTRAP_TOKEN` can be removed afterward.
+To create the first real administrator:
+
+1. Open `/it` and sign in with the existing demo administration login (ID `0000`, password `111111`). This grants demo access only.
+2. Open **Server setup**, then **Create administrator account**.
+3. Read the setup code locally from `seed/bootstrap-token.txt`. Keep its contents private; do not paste it into chat, Git, screenshots or these docs.
+4. Enter the code, a new unique production ID, your name, email and a password of at least 12 characters. Submit the form.
+5. Sign out and return to `/it` using the new ID and password. The new account uses the production dataset.
+
+Setup requires an authenticated administration session AND the secret bootstrap code. It is one-time and atomic; a demo login alone cannot create a production administrator. If setup is already complete, the creation link is unavailable. If the local setup-code file is missing, the deployment owner must securely configure a replacement `BOOTSTRAP_TOKEN` on the public Worker; existing secret values cannot be retrieved through the website. Remove that Cloudflare secret after successful setup.
+
 IT can create official/manager accounts, assign reporting lines and email addresses,
 configure the canonical bureau catalogue, site URL, session duration and reminders.
 Accounts are active only after IT creates them; choosing a designation grants no authority.
@@ -220,3 +224,50 @@ Administration provisions each representative against a verified institution and
 Only institution-originated cases are visible in that portal. Internal cases at the same institution stay confidential. Staff comments and Drive links are private unless the author explicitly chooses institution visibility. Formal update text is sanitized unless marked public. Reviews and requests remain in the append-only history. Drive sharing is manual and independent of portal permissions; no R2 account is required.
 
 Cross-bureau handoff changes ownership only after the receiving official’s manager approves. The source manager must already control the case. Former responsible officials retain a read-only history grant; they lose action authority. Coordination remains a separate two-stage selected-official access workflow.
+
+## Request flow and trust boundaries
+
+```mermaid
+flowchart TD
+  Browser[React browser UI] --> Web[aicted: assets and authenticated API gateway]
+  Web --> Cases[aicted-casework]
+  Web --> Institutions[aicted-institutions]
+  Web --> Handoffs[aicted-handoffs]
+  Web --> Reports[aicted-reports]
+  Web --> Documents[aicted-documents]
+  Web --> Notifications[aicted-notifications]
+  Web --> Live[aicted-live / LiveRoom]
+  Cases --> AI[aicted-relevance / Workers AI]
+  Cases --> Database[aicted-database / DatabaseRouter]
+  Institutions --> Database
+  Handoffs --> Database
+  Reports --> Database
+  Documents --> Database
+  Notifications --> Database
+  Live --> Database
+  Database --> D1[Active D1 or PostgreSQL]
+  Database --> Control[Original D1: routing, IT recovery and encrypted configuration]
+```
+
+The browser talks only to the public gateway. It validates session cookies, checks origin on mutations, applies rate limits, and supplies the authenticated actor to private services. Each private service checks the shared server secret and enforces its own role/case scope. Client-supplied actor headers cannot choose an identity. Private service bindings are not public API URLs.
+
+Case registration records the original receipt, then routes the submission for manager review. Coordination shares selected-official access after two approvals; a handoff changes ownership after receiving-manager approval. Institution history exposes formal updates and explicitly public comments only. Reports use a separate workload scope; a shared case does not automatically count as personal work.
+
+DatabaseRouter serializes application batches and coordinates resumable copy/verification. Original D1 stays the control/recovery store when the active application database changes. LiveRoom sends targeted refresh hints rather than case contents; clients fetch authorized data again. Notifications handle provider requests and scheduled reminders. Document files remain in Google Drive, outside SQL backups and portal authorization.
+
+Workers AI uses `@cf/baai/bge-small-en-v1.5` for English embeddings and `@cf/meta/m2m100-1.2b` for optional translation. Suggestions require an explicit click by a production official. Demo inference is blocked, cached results are reused, and uncached calls have a per-official daily quota. The institution portal currently uses manual tags.
+
+## Security status and basic injection protection
+
+This is a source-level assessment, not a penetration-test certification. No additional tests were run for this documentation update.
+
+- **SQL injection:** application values use D1 bound parameters or PostgreSQL positional parameters. Dynamic table/column names used by database transfers come from internal schema catalogues, not complaint text. PostgreSQL's `unsafe` method receives bound values separately; its name does not mean values are concatenated into SQL. The private database service accepts internal SQL and must remain inaccessible to browsers/untrusted Workers.
+- **HTML/script injection:** React renders complaint/comment strings as text. The UI does not intentionally evaluate submitted HTML or JavaScript. Static asset headers include a self-only script policy, blocked object embedding, frame restrictions and MIME sniffing protection. These controls reduce risk; they do not prove every future rendering change safe.
+- **Authentication:** passwords use salted PBKDF2-SHA256; opaque session tokens are hashed in storage. Cookies are HttpOnly, SameSite=Lax and Secure over HTTPS. Session expiry is configurable. Reset links expire, are single-use and revoke existing sessions.
+- **Authorization:** role checks and scoped case queries run on the server. Institutions cannot use staff endpoints; demo and production records are separated. A designation selected at login does not assign permissions.
+- **Request abuse:** same-origin mutation checks, login/write rate limits, request-size limits, bounded paging and inference/email quotas provide basic defenses. They are not complete DDoS protection or an organization-wide resource budget.
+- **Secrets:** runtime secrets stay in Cloudflare secrets; saved provider/database credentials are encrypted with AES-GCM. No secret values belong in this repository. Preserve `CONFIG_KEY` securely and rotate deliberately.
+
+Important remaining hardening: administration has no MFA, password hashing currently uses 100,000 PBKDF2 iterations, login throttling is IP-based rather than account-wide, and there has been no independent security audit. Administrators are trusted to configure external database hosts and credentials. A compromised administrator or shared internal secret has a broad impact. Drive sharing and third-party sender security remain separate responsibilities. Do not describe the portal as attack-proof.
+
+Public documentation mirror: [docs/PROJECT_README.md](docs/PROJECT_README.md). Both copies are tracked; update them together. Private audit notes, seeds and local helpers remain ignored.
