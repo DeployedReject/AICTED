@@ -1,0 +1,8 @@
+{
+  "name": "aicted-relevance",
+  "main": "index.ts",
+  "compatibility_date": "2026-10-18",
+  "workers_dev": false,
+  "preview_urls": false,
+  "ai": { "binding": "AI" },
+}

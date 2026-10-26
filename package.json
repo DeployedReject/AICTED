@@ -4,8 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "dev": "npm run db:local && concurrently -k -n api,web \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:web": "vite --host 127.0.0.1",
+    "dev:api": "wrangler dev --config wrangler.jsonc --config workers/casework/wrangler.jsonc --config workers/relevance/wrangler.jsonc --port 8787 --persist-to .wrangler/state",
+    "db:local": "wrangler d1 migrations apply DB --local --persist-to .wrangler/state",
+    "build": "tsc -b && tsc -p workers/tsconfig.json && vite build",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
@@ -13,9 +16,13 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261026.1",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^10.0.6",
+    "prettier": "^3.9.10",
     "typescript": "~5.9.3",
     "vite": "^7.1.12"
   }

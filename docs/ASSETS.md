@@ -21,9 +21,11 @@ point uses the coordinate from the supplied reference specification. Other offic
 sites and institution coordinates still need verification before any operational map.
 The login map makes no database requests and contains no complaint or user data.
 
-The official AICTE logo is the user-supplied `Assets/Aicte_Logo.png`, used unchanged
-in the header and browser tab. A white CSS backing keeps the original legible in
-both themes. The logo is separate from the DataMeet map license.
+`Assets/aicte-mark.svg` is an original minimalist vector adaptation of the
+AICTE emblem supplied by the user. It uses a transparent centre and exterior,
+orange gear/lettering and a three-part emblem. It replaces the supplied PNG in
+the header and favicon. It is separate from the DataMeet map licence.
+User-supplied SVG glyphs under `Assets/glyphs` are used for case/message navigation.
 Icons and the entire map remain SVG. No external fonts, map tiles, or paid assets
 are used. The map panel is hidden on phone-sized viewports (760px and narrower).
 

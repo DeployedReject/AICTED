@@ -50,7 +50,7 @@ button svg { flex-shrink: 0; }
 .login-panel { min-width: 0; display: flex; flex-direction: column; background: var(--surface); color: var(--text); transition: background-color .25s, color .25s; }
 .login-header { display: flex; align-items: center; justify-content: space-between; padding: 38px 42px; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 13px; text-decoration: none; }
-.brand-mark { flex-shrink: 0; object-fit: contain; background: #fff; border-radius: 2px; }
+.brand-mark { flex-shrink: 0; object-fit: contain; background: transparent; }
 .brand-type { display: flex; flex-direction: column; gap: 5px; }
 .brand-type strong { font-size: 25px; font-weight: 720; line-height: 1; letter-spacing: 1.5px; }
 .brand-type > span { font-size: 10px; color: var(--muted); letter-spacing: .1px; }
@@ -274,3 +274,5 @@ button svg { flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.test-login { display:block; margin:14px auto 0; font-size:12px; }

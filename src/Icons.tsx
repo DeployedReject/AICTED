@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import aicteLogo from '../Assets/Aicte_Logo.png';
+import aicteLogo from '../Assets/aicte-mark.svg';
 
 type IconName = 'arrow' | 'eye' | 'eyeOff' | 'sun' | 'moon' | 'chevron' | 'lock' | 'building' | 'shield' | 'close' | 'back' | 'check' | 'mail';
 const paths: Record<IconName, React.ReactNode> = {
