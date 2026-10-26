@@ -31,11 +31,14 @@ This checks both frontend and Worker TypeScript and produces the static `dist/`.
 
 ## Test login
 
-Use **Try the demo · Test login**, or select **Test** and enter ID **0000**,
+Select **Test** and enter ID **0000**,
 password **111111**. These credentials authenticate only the demo dataset.
 Other demo officials have no passwords and cannot log in directly. The authenticated
-0000 session can preview the preconfigured demo personas with **View as**, including
-the demo IT administrator. Every preview remains within `is_demo=1` records.
+0000 session can preview the preconfigured official/manager personas with the
+header selector. IT is separated at `/it`, reached by the footer link, and uses ID
+0000 / password 111111 for its demo without a designation dropdown. IT sessions
+cannot be entered by previewing an IT persona from the official portal. Every
+preview remains within `is_demo=1` records.
 AI inference is blocked for all demo personas. Demo case, comment and message
 limits prevent unbounded storage growth. Changes persist and are visible to other testers.
 
@@ -54,7 +57,13 @@ limits prevent unbounded storage growth. Changes persist and are visible to othe
 - Messages addressed by official ID/designation. Case references require access
   on both sides; revoked references are redacted on subsequent reads.
 - Scoped reports, ageing, Bureau workload and CSV export. Partial reports are labelled.
-- IT-only reporting/manager configuration, institution creation and contact settings.
+- Separate IT portal with Accounts, Institutions, Email and Database sections.
+  Officials and managers use their own workspace; managers have a Team sidebar entry.
+- Searchable official/manager fields use loaded results, a 500ms debounce, bounded
+  full-text directory searches and five-minute browser caches. No polling.
+- Database configuration shows the active D1 name/SQLite type and allows preparation
+  of another D1 source or PostgreSQL profile. Saving does not switch the live backend.
+  The help tooltip links to `/postgres-spec.html` and downloadable target SQL.
 - Private English embedding suggestions for production officials, optional translation
   to English first, seven-day cache and ten uncached requests per official/day.
   Original case text stays unchanged; translation is shown separately for review.
@@ -65,7 +74,22 @@ orders. The ignored `scripts/provision-official.py` prepares password-hashed SQL
 for review, including the initial IT account. No production identities are invented.
 Email recovery delivery and institution self-service accounts are not enabled;
 the UI explains this. Contact email settings alone do not activate a mail provider.
-D1 is the configured database; there is no live PostgreSQL switch.
+D1 remains the active database. Switching a source requires verified data, bindings
+and an adapter; the configuration form prepares a destination only.
+
+## Presentation
+
+Local Adwaita Sans supports forms/tables, Liberation Serif headings and Adwaita Mono
+IDs/timestamps. Font licences are bundled in `public/fonts`. Theme selection runs
+before React and the application stylesheet, avoiding a light first paint in dark mode.
+The login and workspace use the same theme toggle.
+
+Login spacing and sidebar density scale fluidly with available width/height; the
+footer intentionally follows the login viewport. Sidebar selection slides between
+items. Content transitions erase/redraw, and component data appears after a minimum
+one-second rectangular placeholder without adding API calls. Reduced-motion users
+skip these delays and animations. Reports include SVG intake, status, Bureau, ageing
+and regional charts based on the existing scoped report response.
 
 ## Cloudflare architecture and deployment
 

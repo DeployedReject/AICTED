@@ -10,9 +10,12 @@ import type {
   Official,
 } from "../../packages/shared/types";
 import { BrandMark } from "../Icons";
+import ThemeToggle from "../ThemeToggle";
 import { api } from "./api";
 import "./workspace.css";
 import Admin from "./Admin";
+import { Scene, SlidingNav, Counter, reduced, NavIcon } from "./Motion";
+import ReportCharts from "./ReportCharts";
 import caseGlyph from "../../Assets/glyphs/file-svgrepo-com.svg";
 import mailGlyph from "../../Assets/glyphs/mail-svgrepo-com.svg";
 
@@ -22,7 +25,11 @@ type Page =
   | "Institutions"
   | "Messages"
   | "Reports"
-  | "Administration";
+  | "Administration"
+  | "Team"
+  | "Accounts"
+  | "Email"
+  | "Database";
 const date = (s: string) =>
   new Date(s).toLocaleDateString("en-IN", {
     day: "numeric",
@@ -73,10 +80,13 @@ function useLoad<T>(path: string, version = 0) {
     [error, setError] = useState("");
   useEffect(() => {
     let active = true;
-    setData(null);
+    if (path !== "/bootstrap") setData(null);
     setError("");
-    api<T>(path)
-      .then((r) => {
+    const wait = new Promise((resolve) =>
+      setTimeout(resolve, reduced() || path === "/bootstrap" ? 0 : 1000),
+    );
+    Promise.all([api<T>(path), wait])
+      .then(([r]) => {
         if (active) setData(r);
       })
       .catch((e) => {
@@ -158,8 +168,12 @@ function CaseTable({
 }
 
 export default function Workspace() {
+  const isIT = location.pathname.startsWith("/it/workspace");
+  const [theme, setTheme] = useState(
+    () => document.documentElement.dataset.theme || "light",
+  );
   const [version, setVersion] = useState(0),
-    [page, setPage] = useState<Page>("My Work"),
+    [page, setPage] = useState<Page>(isIT ? "Accounts" : "My Work"),
     [selected, setSelectedState] = useState<string | null>(() =>
       new URLSearchParams(location.search).get("case"),
     ),
@@ -200,6 +214,10 @@ export default function Workspace() {
       </div>
     );
   const user = boot.user;
+  if ((user.role === "it") !== isIT) {
+    location.replace(user.role === "it" ? "/it/workspace" : "/workspace");
+    return null;
+  }
   return (
     <div className="workspace">
       <aside className="ws-sidebar">
@@ -207,23 +225,25 @@ export default function Workspace() {
           <BrandMark />
           <span>
             <b>AICTE</b>
-            <small>Case workspace</small>
           </span>
         </a>
-        <div className="ws-nav-label">WORKSPACE</div>
-        <nav>
+
+        <SlidingNav selected={page}>
           {(
-            [
-              "My Work",
-              "Cases",
-              "Institutions",
-              "Messages",
-              "Reports",
-              ...(user.role === "it" ? ["Administration"] : []),
-            ] as Page[]
-          ).map((p, i) => (
+            (isIT
+              ? ["Accounts", "Institutions", "Email", "Database"]
+              : [
+                  "My Work",
+                  "Cases",
+                  ...(user.role === "manager" ? ["Team"] : []),
+                  "Institutions",
+                  "Messages",
+                  "Reports",
+                ]) as Page[]
+          ).map((p) => (
             <button
               className={p === page && !selected ? "active" : ""}
+              aria-current={p === page ? "page" : undefined}
               key={p}
               onClick={() => {
                 setPage(p);
@@ -240,13 +260,17 @@ export default function Workspace() {
                     }}
                   />
                 ) : (
-                  ["◫", "▤", "▥", "✉", "▦", "⚙"][i]
+                  <NavIcon name={p} />
                 )}
               </span>
-              {p}
+              {p === "My Work"
+                ? "Work"
+                : p === "Administration"
+                  ? "Settings"
+                  : p}
             </button>
           ))}
-        </nav>
+        </SlidingNav>
         <div className="ws-sidebar-bottom">
           <span>{user.bureau}</span>
           <b>{user.name}</b>
@@ -257,7 +281,7 @@ export default function Workspace() {
             onClick={async () => {
               await api("/auth/logout", {});
               sessionStorage.removeItem("demo-actor");
-              location.assign("/");
+              location.assign(isIT ? "/it" : "/");
             }}
           >
             Sign out ↗
@@ -266,141 +290,155 @@ export default function Workspace() {
       </aside>
       <div className="ws-body">
         <header className="ws-topbar">
-          <span>{selected ? "Cases / Case board" : page}</span>
+          <span>
+            {selected
+              ? "Case"
+              : page === "My Work"
+                ? "Work"
+                : page === "Administration"
+                  ? "Settings"
+                  : page}
+          </span>
           <div>
-            {user.is_demo === 1 && <Badge>DEMO WORKSPACE</Badge>}
-            <button
-              aria-label="Toggle colour theme"
-              onClick={() => {
-                const next =
-                  document.documentElement.dataset.theme === "dark"
-                    ? "light"
-                    : "dark";
-                document.documentElement.dataset.theme = next;
-                localStorage.setItem("aicte-theme", next);
-              }}
-            >
-              ◐
-            </button>
-          </div>
-        </header>
-        {user.is_demo === 1 && (
-          <div className="ws-demo">
-            <span>
-              <b>Demo data.</b> Fictional institutions and cases. Changes are
-              shared with other testers.
-            </span>
-            <label>
-              View as{" "}
+            {user.is_demo === 1 && !isIT && (
               <select
+                className="ws-persona"
                 aria-label="Demo official"
                 value={user.id}
                 onChange={(e) => {
                   sessionStorage.setItem("demo-actor", e.target.value);
                   setSelected(null);
                   setCreating(false);
+                  setPage("My Work");
                   refresh();
                 }}
               >
-                {boot.officials.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name} · {o.designation} · {o.bureau}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        )}
-        <main className="ws-content">
-          {selected ? (
-            <Board
-              id={selected}
-              boot={boot}
-              version={version}
-              refresh={refresh}
-              back={() => setSelected(null)}
-            />
-          ) : creating ? (
-            <NewCase
-              boot={boot}
-              done={(id) => {
-                setCreating(false);
-                setSelected(id);
-                refresh();
-              }}
-              cancel={() => setCreating(false)}
-            />
-          ) : (
-            <>
-              <div className="ws-heading">
-                <div>
-                  <div className="ws-eyebrow">{user.bureau.toUpperCase()}</div>
-                  <h1>{page}</h1>
-                  <p>
-                    {
-                      {
-                        "My Work": "Your cases, reviews and next steps.",
-                        Cases: "Find cases shared with you and your team.",
-                        Institutions: "Case history by institution.",
-                        Messages: "Contact an official by designation and ID.",
-                        Reports: "A snapshot of the cases you can access.",
-                        Administration:
-                          "Account authority and workspace configuration.",
-                      }[page]
-                    }
-                  </p>
-                </div>
-                {(page === "My Work" || page === "Cases") && (
-                  <button
-                    className="ws-primary"
-                    onClick={() => setCreating(true)}
-                  >
-                    + Register case
-                  </button>
-                )}
-              </div>
-              {page === "My Work" && (
-                <div className="ws-metrics">
-                  {[
-                    ["Cases in your scope", boot.summary.total],
-                    ["In progress", boot.summary.processing],
-                    ["Overdue", boot.summary.overdue],
-                    ["Escalated", boot.summary.escalated],
-                  ].map(([label, n]) => (
-                    <div key={label}>
-                      <span>{label}</span>
-                      <strong>{n}</strong>
-                    </div>
+                {boot.officials
+                  .filter((o) => o.role !== "it")
+                  .map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name} · {o.designation}
+                    </option>
                   ))}
+              </select>
+            )}
+            <ThemeToggle
+              theme={theme}
+              onToggle={() => {
+                const next = theme === "dark" ? "light" : "dark";
+                setTheme(next);
+                document.documentElement.dataset.theme = next;
+                try {
+                  localStorage.setItem("aicte-theme", next);
+                } catch {
+                  /* Theme remains usable without storage. */
+                }
+              }}
+            />
+          </div>
+        </header>
+        <main className="ws-content">
+          <Scene
+            scene={selected ? "case-" + selected : creating ? "intake" : page}
+          >
+            {selected ? (
+              <Board
+                id={selected}
+                boot={boot}
+                version={version}
+                refresh={refresh}
+                back={() => setSelected(null)}
+              />
+            ) : creating ? (
+              <NewCase
+                boot={boot}
+                done={(id) => {
+                  setCreating(false);
+                  setSelected(id);
+                  refresh();
+                }}
+                cancel={() => setCreating(false)}
+              />
+            ) : (
+              <>
+                <div className="ws-heading">
+                  <div>
+                    <div className="ws-eyebrow">
+                      {user.bureau.toUpperCase()}
+                    </div>
+                    <h1>
+                      {page === "My Work"
+                        ? "Work"
+                        : page === "Administration"
+                          ? "Settings"
+                          : page}
+                    </h1>
+                  </div>
+                  {(page === "My Work" || page === "Cases") && (
+                    <button
+                      className="ws-primary"
+                      onClick={() => setCreating(true)}
+                    >
+                      + Register
+                    </button>
+                  )}
                 </div>
-              )}
-              {(page === "My Work" || page === "Cases") && (
-                <CaseList
-                  key={page}
-                  boot={boot}
-                  version={version}
-                  open={setSelected}
-                  all={page === "Cases"}
-                  refresh={refresh}
-                />
-              )}
-              {page === "Institutions" && (
-                <Institutions open={setSelected} version={version} />
-              )}
-              {page === "Messages" && (
-                <Messages
-                  boot={boot}
-                  version={version}
-                  refresh={refresh}
-                  open={setSelected}
-                />
-              )}
-              {page === "Reports" && <Reports version={version} />}
-              {page === "Administration" && (
-                <Admin version={version} refresh={refresh} />
-              )}
-            </>
-          )}
+                {page === "My Work" && (
+                  <div className="ws-metrics">
+                    {[
+                      ["Cases in your scope", boot.summary.total],
+                      ["In progress", boot.summary.processing],
+                      ["Overdue", boot.summary.overdue],
+                      ["Escalated", boot.summary.escalated],
+                    ].map(([label, n]) => (
+                      <div key={label}>
+                        <span>{label}</span>
+                        <Counter value={Number(n)} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(page === "My Work" || page === "Cases") && (
+                  <CaseList
+                    key={page}
+                    boot={boot}
+                    version={version}
+                    open={setSelected}
+                    all={page === "Cases"}
+                    refresh={refresh}
+                  />
+                )}
+                {page === "Institutions" && !isIT && (
+                  <Institutions open={setSelected} version={version} />
+                )}
+                {page === "Messages" && (
+                  <Messages
+                    boot={boot}
+                    version={version}
+                    refresh={refresh}
+                    open={setSelected}
+                  />
+                )}
+                {page === "Team" && (
+                  <>
+                    <Team version={version} />
+                    <CaseList
+                      boot={boot}
+                      version={version}
+                      open={setSelected}
+                      all={false}
+                      refresh={refresh}
+                      initialView="team"
+                    />
+                  </>
+                )}
+                {page === "Reports" && <Reports version={version} />}
+                {isIT && (
+                  <Admin version={version} refresh={refresh} section={page} />
+                )}
+              </>
+            )}
+          </Scene>
         </main>
         <footer className="ws-footer">
           © {new Date().getFullYear()} DeployedReject
@@ -416,14 +454,16 @@ function CaseList({
   open,
   all,
   refresh,
+  initialView,
 }: {
+  initialView?: string;
   boot: Bootstrap;
   version: number;
   open: (id: string) => void;
   all: boolean;
   refresh: () => void;
 }) {
-  const [view, setView] = useState(all ? "all" : "assigned"),
+  const [view, setView] = useState(initialView || (all ? "all" : "assigned")),
     [q, setQ] = useState(""),
     [search, setSearch] = useState(""),
     [tag, setTag] = useState(""),
@@ -485,10 +525,10 @@ function CaseList({
           >
             {
               {
-                all: "All accessible",
-                assigned: "Assigned to me",
-                team: "My team",
-                proposed: "Intake review",
+                all: "All",
+                assigned: "Assigned",
+                team: "Team",
+                proposed: "Intake",
                 coordination: "Coordination",
               }[v]
             }
@@ -630,7 +670,6 @@ function CaseList({
           )}
         </>
       )}
-      {view === "team" && <Team version={version} />}
     </>
   );
 }
@@ -641,7 +680,7 @@ function Team({ version }: { version: number }) {
   if (error) return <ErrorBox text={error} />;
   return (
     <section className="ws-section">
-      <h2>Team workload</h2>
+      <h2>Officials</h2>
       {!data ? (
         <Skeleton />
       ) : (
@@ -652,6 +691,7 @@ function Team({ version }: { version: number }) {
               <small>
                 {o.designation} · {o.id}
               </small>
+              <small>{o.bureau}</small>
               <span>{o.active_cases} active cases</span>
             </div>
           ))}
@@ -816,7 +856,7 @@ function Board({
       <div className="ws-board">
         <div>
           <section className="ws-card">
-            <h2>Case details</h2>
+            <h2>Details</h2>
             <p className="ws-pre">{c.description}</p>
             <div className="ws-tags">
               {c.tags.map((t) => (
@@ -825,7 +865,7 @@ function Board({
                 </span>
               ))}
             </div>
-            <h3>Next action</h3>
+            <h3>Next</h3>
             <p>{c.next_action}</p>
             {c.approval_reason && <p>Review note: {c.approval_reason}</p>}
           </section>
@@ -909,7 +949,7 @@ function Board({
             </section>
           )}
           <section className="ws-card">
-            <h2>Case board</h2>
+            <h2>Updates</h2>
             <p className="ws-hint">
               Comments and formal updates, in time order. History cannot be
               edited.
@@ -1211,8 +1251,7 @@ function NewCase({
       </button>
       <div className="ws-heading">
         <div>
-          <h1>Register a case</h1>
-          <p>Your manager reviews it before processing begins.</p>
+          <h1>Register</h1>
         </div>
         <Badge>{boot.user.is_demo ? "DEMO CASE" : "New proposal"}</Badge>
       </div>
@@ -1623,13 +1662,6 @@ function Reports({ version }: { version: number }) {
   const approved = data.rows.filter((r) => r.intake === "Approved"),
     active = approved.filter((r) => r.status !== "Disposed"),
     now = new Date().toISOString();
-  const groups = [...new Set(approved.map((r) => r.bureau))].map((b) => ({
-    bureau: b,
-    total: approved.filter((r) => r.bureau === b).length,
-    active: active.filter((r) => r.bureau === b).length,
-    disposed: approved.filter((r) => r.bureau === b && r.status === "Disposed")
-      .length,
-  }));
   function download() {
     const fields = [
       "bureau",
@@ -1665,97 +1697,27 @@ function Reports({ version }: { version: number }) {
   }
   return (
     <>
+      <div className="ws-report-toolbar">
+        <span>
+          {stamp(data.as_of)} · {data.rows.length} records
+          {data.limited ? " · Partial" : ""}
+        </span>
+        <button onClick={download}>Export</button>
+      </div>
       <div className="ws-metrics">
         {[
           ["Active", active.length],
           ["Disposed", approved.length - active.length],
           ["Overdue", active.filter((r) => r.due_at < now).length],
-          [
-            "Awaiting review",
-            data.rows.filter((r) => r.intake === "Submitted").length,
-          ],
+          ["Review", data.rows.filter((r) => r.intake === "Submitted").length],
         ].map(([label, n]) => (
           <div key={label}>
             <span>{label}</span>
-            <strong>{n}</strong>
+            <Counter value={Number(n)} />
           </div>
         ))}
       </div>
-      <section className="ws-card">
-        <div className="ws-heading">
-          <div>
-            <h2>Bureau workload</h2>
-            <p>
-              As of {stamp(data.as_of)} · {data.rows.length} accessible records
-            </p>
-          </div>
-          <button onClick={download}>Export CSV</button>
-        </div>
-        {groups.length ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Bureau</th>
-                <th>Active</th>
-                <th>Disposed</th>
-                <th>Distribution</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((g) => (
-                <tr key={g.bureau}>
-                  <td>{g.bureau}</td>
-                  <td>{g.active}</td>
-                  <td>{g.disposed}</td>
-                  <td>
-                    <div
-                      className="ws-bar"
-                      aria-label={`${g.active} active of ${g.total}`}
-                    >
-                      <span
-                        style={{ width: (g.active / g.total) * 100 + "%" }}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <Empty>No approved cases in this scope.</Empty>
-        )}
-      </section>
-      <section className="ws-card">
-        <h2>Age of active cases</h2>
-        <div className="ws-metrics">
-          {[
-            [0, 7],
-            [8, 30],
-            [31, 90],
-            [91, Infinity],
-          ].map(([lo, hi]) => (
-            <div key={lo}>
-              <span>{hi === Infinity ? "91+" : `${lo}–${hi}`} days</span>
-              <strong>
-                {
-                  active.filter((r) => {
-                    const age = Math.floor(
-                      (Date.now() - Date.parse(r.received_at)) / 86400000,
-                    );
-                    return age >= lo && age <= hi;
-                  }).length
-                }
-              </strong>
-            </div>
-          ))}
-        </div>
-      </section>
-      <p className="ws-hint">
-        {data.limited
-          ? "Limited to the latest 500 accessible records; this is a partial report."
-          : "All records in your current access scope."}{" "}
-        Intake approval and final disposal are counted separately.
-      </p>
+      <ReportCharts rows={data.rows} />
     </>
   );
 }

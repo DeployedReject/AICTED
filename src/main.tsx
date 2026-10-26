@@ -7,9 +7,16 @@ import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {location.pathname.startsWith("/workspace") ? (
+    {location.pathname.startsWith("/workspace") ||
+    location.pathname.startsWith("/it/workspace") ? (
       <Suspense
-        fallback={<div style={{ padding: 40 }}>Loading workspace…</div>}
+        fallback={
+          <div className="boot-skeleton" role="status" aria-label="Loading">
+            <i />
+            <i />
+            <i />
+          </div>
+        }
       >
         <Workspace />
       </Suspense>

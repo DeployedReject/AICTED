@@ -53,7 +53,8 @@ export default {
         url = new URL(request.url),
         path = url.pathname;
       const s = scope(user);
-      if (path === "/api/admin") return admin(request, env, user);
+      if (path === "/api/admin" || path === "/api/admin/officials")
+        return admin(request, env, user);
       if (request.method === "GET" && path === "/api/bootstrap") {
         const [officials, tags, counts] = await Promise.all([
           db

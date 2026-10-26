@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { BrandMark, Icon } from "./Icons";
 import IndiaMap from "./IndiaMap";
+import ThemeToggle from "./ThemeToggle";
 import { api } from "./workspace/api";
 
 type Audience = "official" | "institution";
@@ -37,6 +38,7 @@ function readTheme() {
 }
 
 export default function App() {
+  const isIT = location.pathname.replace(/\/$/, "") === "/it";
   const [theme, setTheme] = useState(readTheme);
   const [audience, setAudience] = useState<Audience>("official");
   const [view, setView] = useState<View>("login");
@@ -86,9 +88,14 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      await api("/auth/login", { id, password, designation });
+      await api("/auth/login", {
+        id,
+        password,
+        designation,
+        portal: isIT ? "it" : "official",
+      });
       sessionStorage.removeItem("demo-actor");
-      location.assign("/workspace");
+      location.assign(isIT ? "/it/workspace" : "/workspace");
     } catch (error) {
       setNotice((error as Error).message);
     } finally {
@@ -113,7 +120,7 @@ export default function App() {
     void login(
       String(data.get("username")),
       String(data.get("password")),
-      String(data.get("designation")),
+      isIT ? "" : String(data.get("designation")),
     );
   }
 
@@ -150,91 +157,85 @@ export default function App() {
               <span>All India Council for Technical Education</span>
             </span>
           </a>
-          <button
-            className="theme-toggle"
-            type="button"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-          >
-            <Icon name={theme === "dark" ? "sun" : "moon"} size={19} />
-          </button>
+          <ThemeToggle
+            theme={theme}
+            onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
+          />
         </header>
 
         <div className="login-main" id="login-content">
           <div className="form-container">
-            <div className="portal-label">
-              <span /> INSTITUTION COMPLAINT PORTAL
-            </div>
             <div className="intro">
               <h1 tabIndex={-1} ref={title}>
-                {view === "login" ? "Welcome back." : "Forgot your password?"}
+                {view === "login" ? (isIT ? "IT" : "Sign in") : "Recovery"}
               </h1>
-              <p>
-                {view === "login"
-                  ? "Sign in to your account to continue."
-                  : "Enter the email linked to your account."}
-              </p>
             </div>
 
             {view === "login" ? (
               <>
+                {!isIT && (
+                  <div
+                    className="audience-tabs"
+                    role="tablist"
+                    aria-label="Account type"
+                  >
+                    {(["official", "institution"] as const).map(
+                      (type, index) => (
+                        <button
+                          key={type}
+                          ref={(el) => {
+                            tabRefs.current[index] = el;
+                          }}
+                          type="button"
+                          id={`${type}-tab`}
+                          role="tab"
+                          aria-selected={audience === type}
+                          aria-controls="account-form"
+                          tabIndex={audience === type ? 0 : -1}
+                          className={audience === type ? "selected" : ""}
+                          onClick={() => changeAudience(type)}
+                          onKeyDown={(event) => {
+                            if (
+                              [
+                                "ArrowLeft",
+                                "ArrowRight",
+                                "Home",
+                                "End",
+                              ].includes(event.key)
+                            ) {
+                              event.preventDefault();
+                              const next =
+                                event.key === "Home"
+                                  ? 0
+                                  : event.key === "End"
+                                    ? 1
+                                    : 1 - index;
+                              changeAudience(
+                                next === 0 ? "official" : "institution",
+                              );
+                              tabRefs.current[next]?.focus();
+                            }
+                          }}
+                        >
+                          <Icon
+                            name={type === "official" ? "shield" : "building"}
+                            size={17}
+                          />
+                          {type === "official" ? "Official" : "Institution"}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                )}
                 <div
-                  className="audience-tabs"
-                  role="tablist"
-                  aria-label="Account type"
-                >
-                  {(["official", "institution"] as const).map((type, index) => (
-                    <button
-                      key={type}
-                      ref={(el) => {
-                        tabRefs.current[index] = el;
-                      }}
-                      type="button"
-                      id={`${type}-tab`}
-                      role="tab"
-                      aria-selected={audience === type}
-                      aria-controls="account-form"
-                      tabIndex={audience === type ? 0 : -1}
-                      className={audience === type ? "selected" : ""}
-                      onClick={() => changeAudience(type)}
-                      onKeyDown={(event) => {
-                        if (
-                          ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
-                            event.key,
-                          )
-                        ) {
-                          event.preventDefault();
-                          const next =
-                            event.key === "Home"
-                              ? 0
-                              : event.key === "End"
-                                ? 1
-                                : 1 - index;
-                          changeAudience(
-                            next === 0 ? "official" : "institution",
-                          );
-                          tabRefs.current[next]?.focus();
-                        }
-                      }}
-                    >
-                      <Icon
-                        name={type === "official" ? "shield" : "building"}
-                        size={17}
-                      />
-                      {type === "official" ? "AICTE Official" : "Institution"}
-                    </button>
-                  ))}
-                </div>
-                <div
-                  role="tabpanel"
+                  role={isIT ? undefined : "tabpanel"}
                   id="account-form"
-                  aria-labelledby={`${audience}-tab`}
+                  aria-labelledby={isIT ? undefined : `${audience}-tab`}
                 >
                   <form className="login-form" key={audience} onSubmit={submit}>
-                    {audience === "official" && (
+                    {audience === "official" && !isIT && (
                       <div className="field">
-                        <label htmlFor="designation">Rank / designation</label>
+                        <label htmlFor="designation">Designation</label>
                         <div className="select-wrap">
                           <select
                             id="designation"
@@ -326,39 +327,19 @@ export default function App() {
                       <Icon name="arrow" size={19} />
                     </button>
                   </form>
-                  {audience === "official" && (
+                  <div className="login-links">
                     <button
-                      className="test-login text-button"
+                      className="text-button"
                       type="button"
-                      disabled={busy}
-                      onClick={() => void login("0000", "111111", "Test")}
+                      onClick={() =>
+                        setDialog(
+                          audience === "official" ? "support" : "access",
+                        )
+                      }
                     >
-                      Try the demo · Test login
+                      {audience === "official" ? "Support" : "Access"}
                     </button>
-                  )}
-                  <p className="account-help">
-                    {audience === "official" ? (
-                      <>
-                        Need help signing in?{" "}
-                        <button
-                          className="text-button"
-                          onClick={() => setDialog("support")}
-                        >
-                          Contact support
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        Don’t have an account?{" "}
-                        <button
-                          className="text-button"
-                          onClick={() => setDialog("access")}
-                        >
-                          Request access
-                        </button>
-                      </>
-                    )}
-                  </p>
+                  </div>
                 </div>
               </>
             ) : (
@@ -395,12 +376,6 @@ export default function App() {
                 </button>
               </form>
             )}
-            <div className="access-note">
-              <Icon name="lock" size={13} />
-              <span>
-                For authorised officials and institution representatives.
-              </span>
-            </div>
           </div>
         </div>
       </section>
@@ -426,14 +401,10 @@ export default function App() {
             Local vectors · ODbL
           </a>
         </span>
-        <button
-          className="admin-link"
-          type="button"
-          onClick={() => setDialog("admin")}
-        >
-          IT administration
+        <a className="admin-link" href={isIT ? "/" : "/it"}>
+          {isIT ? "Officials" : "IT"}
           <Icon name="arrow" size={13} />
-        </button>
+        </a>
       </footer>
 
       <dialog

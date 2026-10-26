@@ -4,8 +4,38 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f7f4" />
-    <meta name="description" content="AICTE Institution Complaint Portal. A shared space for institutions and officials to manage complaints." />
+    <meta
+      name="description"
+      content="AICTE Institution Complaint Portal. A shared space for institutions and officials to manage complaints."
+    />
     <link rel="icon" type="image/svg+xml" href="/Assets/aicte-mark.svg" />
+    <style>
+      :root {
+        background: #f7f7f4;
+        color: #20292d;
+      }
+      :root[data-theme="dark"] {
+        background: #171b1f;
+        color: #edf0ed;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          background: #171b1f;
+          color: #edf0ed;
+        }
+      }
+      body {
+        margin: 0;
+      }
+    </style>
+    <script src="/theme.js"></script>
+    <link
+      rel="preload"
+      href="/fonts/aicted-sans.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <title>Sign in · AICTE Institution Complaint Portal</title>
   </head>
   <body>

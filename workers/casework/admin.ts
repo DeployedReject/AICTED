@@ -4,8 +4,34 @@ import { body, fail, json, now, textField, userColumns } from "../shared";
 export async function admin(request: Request, env: Env, user: Official) {
   if (user.role !== "it") fail(403, "IT administration access is required.");
   const db = env.DB;
+  const url = new URL(request.url);
+  if (url.pathname === "/api/admin/officials" && request.method === "GET") {
+    const query = (url.searchParams.get("q") || "").trim().slice(0, 80);
+    if (query.length < 2) return json({ officials: [], more: false });
+    const tokens = query.match(/[\p{L}\p{N}]+/gu)?.slice(0, 4) || [];
+    if (!tokens.length) return json({ officials: [], more: false });
+    const match = tokens.map((t) => '"' + t + '"*').join(" AND ");
+    const role = url.searchParams.get("role") === "manager" ? "manager" : null;
+    const bureau = (url.searchParams.get("bureau") || "").slice(0, 80);
+    const rows = await db
+      .prepare(
+        `SELECT ${userColumns
+          .split(",")
+          .map((c) => "o." + c)
+          .join(
+            ",",
+          )} FROM official_search JOIN officials o ON o.rowid=official_search.rowid WHERE official_search MATCH ? AND o.is_demo=? AND o.active=1 AND o.role<>'it' ${role ? "AND o.role='manager'" : ""} ${bureau ? "AND o.bureau=?" : ""} ORDER BY rank LIMIT 21`,
+      )
+      .bind(match, user.is_demo, ...(bureau ? [bureau] : []))
+      .all();
+    return json({
+      officials: rows.results.slice(0, 20),
+      more: rows.results.length > 20,
+    });
+  }
+
   if (request.method === "GET") {
-    const [settings, officials] = await Promise.all([
+    const [settings, officials, migration] = await Promise.all([
       db
         .prepare(
           "SELECT support_email,sender_email,updated_at FROM workspace_settings WHERE is_demo=?",
@@ -18,14 +44,79 @@ export async function admin(request: Request, env: Env, user: Official) {
         )
         .bind(user.is_demo)
         .all(),
+      db
+        .prepare(
+          "SELECT source,d1_database_id,host,port,database_name,username,ssl_mode,updated_at FROM migration_settings WHERE is_demo=?",
+        )
+        .bind(user.is_demo)
+        .first(),
     ]);
     return json({
       settings: settings || { support_email: "", sender_email: "" },
       officials: officials.results,
+      current_database: { name: "aicted-workspace", type: "SQLite" },
+      migration: migration || {
+        source: "postgres",
+        d1_database_id: "",
+        host: "",
+        port: 5432,
+        database_name: "",
+        username: "",
+        ssl_mode: "verify-full",
+      },
     });
   }
   if (request.method !== "POST") fail(405, "Method not allowed.");
   const input = await body(request);
+  if (input.action === "migration") {
+    if (input.source === "d1") {
+      const name = textField(input.database_name, "Database", 80),
+        databaseId = textField(input.d1_database_id, "Database ID", 36);
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          databaseId,
+        )
+      )
+        fail(400, "Enter a valid D1 database ID.");
+      await db
+        .prepare(
+          "INSERT INTO migration_settings(is_demo,host,port,database_name,username,ssl_mode,updated_at,updated_by,source,d1_database_id) VALUES(?,'',5432,?,'','verify-full',?,?,'d1',?) ON CONFLICT(is_demo) DO UPDATE SET source='d1',d1_database_id=excluded.d1_database_id,database_name=excluded.database_name,host='',username='',updated_at=excluded.updated_at,updated_by=excluded.updated_by",
+        )
+        .bind(user.is_demo, name, now(), user.id, databaseId)
+        .run();
+      return json({ ok: true, active: "D1" });
+    }
+    if (input.source !== "postgres") fail(400, "Choose a database source.");
+    const host = textField(input.host, "Host", 253),
+      databaseName = textField(input.database_name, "Database", 80),
+      username = textField(input.username, "User", 80),
+      port = Number(input.port);
+    if (
+      !/^[a-zA-Z0-9.-]+$/.test(host) ||
+      !Number.isInteger(port) ||
+      port < 1 ||
+      port > 65535
+    )
+      fail(400, "Enter a valid hostname and port.");
+    if (!["verify-full", "require"].includes(String(input.ssl_mode)))
+      fail(400, "TLS is required.");
+    await db
+      .prepare(
+        "INSERT INTO migration_settings(is_demo,host,port,database_name,username,ssl_mode,updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(is_demo) DO UPDATE SET source='postgres',d1_database_id='',host=excluded.host,port=excluded.port,database_name=excluded.database_name,username=excluded.username,ssl_mode=excluded.ssl_mode,updated_at=excluded.updated_at,updated_by=excluded.updated_by",
+      )
+      .bind(
+        user.is_demo,
+        host,
+        port,
+        databaseName,
+        username,
+        input.ssl_mode,
+        now(),
+        user.id,
+      )
+      .run();
+    return json({ ok: true, active: "D1" });
+  }
   if (input.action === "reporting") {
     const officialId = textField(input.official_id, "Official", 80),
       managerId = input.manager_id

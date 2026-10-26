@@ -57,3 +57,12 @@ Motion stops when the panel is hidden, the tab is inactive, or reduced motion is
 enabled. Local vector chunks load as static assets and are reused by the browser;
 phone layouts do not request them. There are no external map API or database
 requests for the animation.
+
+## Typography
+
+Self-hosted Adwaita Sans and Adwaita Mono are supplied under the SIL Open Font
+License in `public/fonts/ADWAITA-LICENSE.txt`. Liberation Serif regular and bold
+use the SIL Open Font License in `public/fonts/LIBERATION-LICENSE.txt`. WOFF2
+files were losslessly compressed from installed source fonts; family names are
+unchanged in the font data. UI forms use sans-serif, headings use serif, and
+identifiers/timestamps use monospace. There are no external font requests.

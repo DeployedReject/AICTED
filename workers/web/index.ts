@@ -29,7 +29,10 @@ async function passwordHash(password: string, salt: string) {
     ),
   );
 }
-async function session(request: Request, env: Env): Promise<Official> {
+async function session(
+  request: Request,
+  env: Env,
+): Promise<Official & { portal: string }> {
   const token = request.headers
     .get("cookie")
     ?.split(";")
@@ -43,10 +46,10 @@ async function session(request: Request, env: Env): Promise<Official> {
       .map((c) => "u." + c)
       .join(
         ",",
-      )} FROM sessions s JOIN officials u ON u.id=s.official_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`,
+      )},s.portal FROM sessions s JOIN officials u ON u.id=s.official_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`,
   )
     .bind(await sha(token), Math.floor(Date.now() / 1000))
-    .first<Official>();
+    .first<Official & { portal: string }>();
   if (!user) fail(401, "Your session has expired. Please sign in again.");
   return user;
 }
@@ -71,13 +74,19 @@ export default {
         )
           fail(429, "Too many attempts. Try again in a minute.");
         const input = await body(request);
+        const portal = input.portal === "it" ? "it" : "official";
         if (
           typeof input.id !== "string" ||
           typeof input.password !== "string" ||
-          typeof input.designation !== "string" ||
+          (portal === "official" && typeof input.designation !== "string") ||
           input.password.length > 256
         )
-          fail(400, "Enter your ID, designation and password.");
+          fail(
+            400,
+            portal === "it"
+              ? "Enter your ID and password."
+              : "Enter your ID, designation and password.",
+          );
         const user = await env.DB.prepare(
           `SELECT ${userColumns},password_hash,password_salt FROM officials WHERE id=? AND active=1`,
         )
@@ -92,9 +101,24 @@ export default {
           !user ||
           !expected ||
           expected !== actual ||
-          user.designation.toLowerCase() !== input.designation.toLowerCase()
+          (portal === "official" &&
+            user.designation.toLowerCase() !==
+              String(input.designation).toLowerCase())
         )
-          fail(401, "The ID, designation or password is incorrect.");
+          fail(
+            401,
+            portal === "it"
+              ? "The ID or password is incorrect."
+              : "The ID, designation or password is incorrect.",
+          );
+        if (
+          portal === "it" &&
+          user.role !== "it" &&
+          !(user.id === "0000" && user.is_demo === 1)
+        )
+          fail(403, "Use the official sign-in.");
+        if (portal === "official" && user.role === "it")
+          fail(403, "Use the IT sign-in.");
         const token = crypto.randomUUID() + crypto.randomUUID();
         const expires = Math.floor(Date.now() / 1000) + 8 * 60 * 60;
         await env.DB.batch([
@@ -102,8 +126,8 @@ export default {
             "DELETE FROM sessions WHERE official_id=? AND expires_at<?",
           ).bind(user.id, Math.floor(Date.now() / 1000)),
           env.DB.prepare(
-            "INSERT INTO sessions(token_hash,official_id,expires_at) VALUES(?,?,?)",
-          ).bind(await sha(token), user.id, expires),
+            "INSERT INTO sessions(token_hash,official_id,expires_at,portal) VALUES(?,?,?,?)",
+          ).bind(await sha(token), user.id, expires, portal),
         ]);
         const { password_hash: _hash, password_salt: _salt, ...safe } = user;
         return new Response(JSON.stringify({ user: safe }), {
@@ -134,11 +158,15 @@ export default {
         });
       }
       let user = await session(request, env);
-      if (url.pathname === "/api/auth/me") return json({ user });
+
       // The single public test login may preview only preconfigured demo personas.
       // This never changes the authenticated session or permits a real account.
       const sessionUserId = user.id;
-      const previewId = request.headers.get("x-demo-actor");
+      const previewId =
+        user.portal === "it" && user.id === "0000" && user.is_demo === 1
+          ? "DEMO-IT"
+          : request.headers.get("x-demo-actor");
+      const portal = user.portal;
       if (previewId && user.id === "0000" && user.is_demo === 1) {
         const preview = await env.DB.prepare(
           `SELECT ${userColumns} FROM officials WHERE id=? AND is_demo=1 AND active=1`,
@@ -147,8 +175,11 @@ export default {
           .first<Official>();
         if (!preview)
           fail(403, "Only configured demo officials can be previewed.");
-        user = preview;
+        if ((portal === "it") !== (preview.role === "it"))
+          fail(403, "Use the separate IT sign-in.");
+        user = { ...preview, portal };
       }
+      if (url.pathname === "/api/auth/me") return json({ user });
       if (
         request.method !== "GET" &&
         env.WRITE_LIMITER &&

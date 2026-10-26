@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#171b1f" />
+    <title>PostgreSQL · AICTE</title>
+    <style>
+      :root {
+        background: #f7f7f4;
+        color: #20292d;
+        color-scheme: light;
+      }
+      :root[data-theme="dark"] {
+        background: #171b1f;
+        color: #edf0ed;
+        color-scheme: dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          background: #171b1f;
+          color: #edf0ed;
+        }
+      }
+      @font-face {
+        font-family: Adwaita;
+        src: url("/fonts/aicted-sans.woff2");
+      }
+      @font-face {
+        font-family: Liberation;
+        src: url("/fonts/aicted-serif.woff2");
+      }
+      body {
+        font:
+          15px/1.7 Adwaita,
+          sans-serif;
+        margin: 0;
+      }
+      main {
+        max-width: 840px;
+        padding: 50px 24px 100px;
+        margin: auto;
+      }
+      h1,
+      h2 {
+        font-family: Liberation, serif;
+        font-weight: 400;
+      }
+      h1 {
+        font-size: 48px;
+        margin: 25px 0 10px;
+      }
+      h2 {
+        font-size: 27px;
+        margin-top: 42px;
+      }
+      a {
+        color: #397dc9;
+        text-underline-offset: 4px;
+      }
+      code {
+        font-size: 12px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 13px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #89939950;
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      small {
+        color: #899399;
+      }
+      li {
+        margin-bottom: 10px;
+      }
+      .tag {
+        border: 1px solid #89939960;
+        padding: 5px 9px;
+        font-size: 11px;
+      }
+    </style>
+    <script src="/theme.js"></script>
+  </head>
+  <body>
+    <main>
+      <a href="/it/workspace">← Settings</a>
+      <h1>PostgreSQL</h1>
+      <span class="tag">Preparation</span>
+      <p>
+        D1 remains the active database. The migration form stores a destination
+        profile; it does not connect to PostgreSQL, copy data, or switch
+        traffic.
+      </p>
+      <h2>Connection</h2>
+      <table>
+        <tr>
+          <th>Property</th>
+          <th>Requirement</th>
+        </tr>
+        <tr>
+          <td>Version</td>
+          <td>
+            PostgreSQL 16 or later, UTF-8 encoding. A dedicated application
+            database, separate from unrelated services.
+          </td>
+        </tr>
+        <tr>
+          <td>Network</td>
+          <td>
+            A hostname and port reachable by Cloudflare Hyperdrive. Use
+            connection pooling; do not open an unbounded connection per request.
+          </td>
+        </tr>
+        <tr>
+          <td>TLS</td>
+          <td>
+            Encrypted transport required. Prefer full certificate and hostname
+            verification. Use the verification options supported by the selected
+            Hyperdrive origin configuration.
+          </td>
+        </tr>
+        <tr>
+          <td>Credentials</td>
+          <td>
+            A dedicated application role. Store the connection password in
+            Hyperdrive/Cloudflare secrets during provisioning, never in the
+            browser, migration profile or Git.
+          </td>
+        </tr>
+        <tr>
+          <td>Roles</td>
+          <td>
+            A separate migration owner applies schema changes. The application
+            role must not be a superuser or schema owner, and must not have
+            CREATE, ALTER, DROP, TRUNCATE or replication privileges.
+          </td>
+        </tr>
+      </table>
+      <h2>Schema</h2>
+      <p>
+        <a href="/postgres/schema.sql" download>Download target SQL</a>. This is
+        the target database schema, not an executable D1 migration. Review it in
+        a disposable PostgreSQL database first.
+      </p>
+      <table>
+        <tr>
+          <th>Table</th>
+          <th>Purpose</th>
+        </tr>
+        <tr>
+          <td><code>officials</code></td>
+          <td>
+            Verified IDs, designation, Bureau, explicit authority, reporting
+            lines, PBKDF2 password hash and salt. Self-references must not form
+            cycles.
+          </td>
+        </tr>
+        <tr>
+          <td><code>sessions</code></td>
+          <td>
+            SHA-256 hashes of opaque session tokens, expiry as epoch seconds,
+            and separate official/IT portal scope. Expired sessions must not
+            authenticate.
+          </td>
+        </tr>
+        <tr>
+          <td><code>institutions</code>, <code>tags</code></td>
+          <td>Unique Permanent IDs and the controlled tag catalogue.</td>
+        </tr>
+        <tr>
+          <td><code>cases</code></td>
+          <td>
+            Ownership, intake decision, lifecycle, escalation, JSONB tag arrays,
+            original description, receipt/due/update timestamps and dataset
+            boundary.
+          </td>
+        </tr>
+        <tr>
+          <td><code>case_events</code></td>
+          <td>
+            Append-only chronological history. Deny UPDATE, DELETE and TRUNCATE
+            to the application role; preserve the immutable-history trigger.
+          </td>
+        </tr>
+        <tr>
+          <td><code>case_grants</code>, <code>coordination_requests</code></td>
+          <td>
+            Selected-official grants, two approval stages, rejection/revocation
+            and timestamps. A partial unique index permits only one open request
+            per case and selected official.
+          </td>
+        </tr>
+        <tr>
+          <td><code>messages</code></td>
+          <td>
+            Sender/recipient IDs and optional case references, with access
+            checked on both send and read.
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code>workspace_settings</code>, <code>migration_settings</code>
+          </td>
+          <td>Non-secret IT settings, isolated between production and demo.</td>
+        </tr>
+        <tr>
+          <td><code>tag_cache</code>, <code>inference_usage</code></td>
+          <td>Expiring cached model results and atomic daily quotas.</td>
+        </tr>
+      </table>
+      <h2>Data contract</h2>
+      <ul>
+        <li>
+          Preserve every ID exactly, including leading zeroes. IDs remain text;
+          do not replace them with integer sequences.
+        </li>
+        <li>
+          Return timestamps to the API as UTC ISO 8601 strings. Keep
+          session/cache expiry as integer epoch seconds. Do not reset receipt
+          dates during migration.
+        </li>
+        <li>
+          Keep JSONB tags as arrays of catalogue codes. Preserve
+          <code>is_demo</code>, <code>active</code> and
+          <code>escalated</code> as numeric 0/1 values in API responses.
+        </li>
+        <li>
+          Keep the existing lifecycle and intake values unchanged. Intake
+          approval and case disposal remain separate.
+        </li>
+        <li>
+          Manager scope follows explicitly configured reporting lines.
+          Coordination grants apply to selected IDs and never spread to a whole
+          Bureau or to the recipient's manager.
+        </li>
+      </ul>
+      <h2>Adapter</h2>
+      <p>
+        The current Workers use D1's SQLite API. Before switching, implement a
+        PostgreSQL adapter with parameterised queries, transactions and pooling.
+        A saved hostname alone cannot activate PostgreSQL.
+      </p>
+      <ul>
+        <li>
+          Convert <code>?</code> placeholders to PostgreSQL parameters; replace
+          SQLite full-text MATCH with PostgreSQL indexed text search, and
+          <code>json_each</code> with JSONB operations and boolean sums with
+          filtered aggregates.
+        </li>
+        <li>
+          Replace D1 <code>batch</code> calls with transactions. Use conditional
+          updates/row locks and affected-row checks so competing approvals
+          cannot create duplicate events or grants.
+        </li>
+        <li>
+          Preserve recursive reporting scope, demo separation, revoked-grant
+          filtering, all current pagination bounds and server-side access
+          checks.
+        </li>
+        <li>
+          Do not expose a database connection or secret to React. Only the
+          authenticated web entry may call the private casework service.
+        </li>
+      </ul>
+      <h2>Cutover</h2>
+      <ol>
+        <li>
+          Back up D1 and retain a tested rollback plan. Prepare the schema,
+          restricted runtime role, indexes, TLS and Hyperdrive binding.
+        </li>
+        <li>
+          Pause writes for the export/import window, or implement and verify a
+          change-capture process before using one. Import officials in reporting
+          order, then institutions, tags, cases, events, grants, coordination,
+          messages and settings.
+        </li>
+        <li>
+          Compare row counts, IDs, timestamps, foreign keys and hashes. Keep
+          demo records isolated. Invalidate existing sessions at cutover; do not
+          expose session tokens in exports.
+        </li>
+        <li>
+          Run access-denial tests, no-self-approval checks, both coordination
+          stages, selected-user sharing, revocation, append-only history,
+          messaging, quotas, pagination and concurrent approval tests.
+        </li>
+        <li>
+          Check query plans and latency against assignment, institution, event
+          and grant indexes. Enable traffic only after the adapter and migration
+          checks pass.
+        </li>
+        <li>
+          Verify the new backend, then resume writes. After new writes reach
+          PostgreSQL, rollback requires reconciling those writes; do not simply
+          point traffic back at an old D1 snapshot.
+        </li>
+      </ol>
+      <h2>Reference</h2>
+      <p>
+        <a
+          href="https://developers.cloudflare.com/hyperdrive/configuration/tls-ssl-certificates-for-hyperdrive/"
+          target="_blank"
+          rel="noreferrer"
+          >Cloudflare Hyperdrive</a
+        >
+        ·
+        <a
+          href="https://www.postgresql.org/docs/current/sql-grant.html"
+          target="_blank"
+          rel="noreferrer"
+          >PostgreSQL privileges</a
+        >
+      </p>
+      <small>AICTED · Target specification v1 · 26 October 2026</small>
+    </main>
+  </body>
+</html>
