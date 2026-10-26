@@ -1,6 +1,6 @@
 import type { Official } from "../../packages/shared/types";
 import type { Env } from "../shared";
-import { body, fail, json, now, textField, userColumns } from "../shared";
+import { body, fail, json, now, id, textField, userColumns } from "../shared";
 import { production } from "./production";
 import { runtime } from "../runtime";
 export async function admin(request: Request, env: Env, user: Official) {
@@ -8,6 +8,69 @@ export async function admin(request: Request, env: Env, user: Official) {
   const db = env.DB;
   const control = env.CONTROL_DB || db;
   const url = new URL(request.url);
+  if (url.pathname === "/api/admin/tags") {
+    if (request.method === "GET") {
+      const result = await db
+        .prepare(
+          "SELECT code,label,group_name,active,source FROM tags WHERE is_demo=? ORDER BY active DESC,group_name,label LIMIT 201",
+        )
+        .bind(user.is_demo)
+        .all();
+      return json({ tags: result.results });
+    }
+    if (request.method !== "POST") fail(405, "Method not allowed.");
+    const input = await body(request),
+      code = textField(input.code, "Tag code", 40),
+      label = textField(input.label, "Tag name", 120),
+      group = textField(input.group_name, "Category group", 80),
+      active = input.active === "1" || input.active === true ? 1 : 0;
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(code))
+      fail(
+        400,
+        "Use letters, numbers, hyphens or underscores for the tag code.",
+      );
+    const result = await db.batch([
+      db
+        .prepare(
+          "INSERT INTO tags(code,label,group_name,active,source,is_demo) SELECT ?,?,?,?,'custom',? WHERE (EXISTS(SELECT 1 FROM tags WHERE code=? AND is_demo=?) OR (SELECT COUNT(*) FROM tags WHERE is_demo=?)<200) AND (?=0 OR (SELECT COUNT(*) FROM tags WHERE is_demo=? AND active=1 AND code<>?)<100) ON CONFLICT(code,is_demo) DO UPDATE SET label=excluded.label,group_name=excluded.group_name,active=excluded.active,source='custom'",
+        )
+        .bind(
+          code,
+          label,
+          group,
+          active,
+          user.is_demo,
+          code,
+          user.is_demo,
+          user.is_demo,
+          active,
+          user.is_demo,
+          code,
+        ),
+      db
+        .prepare(
+          "INSERT INTO admin_audit(id,actor_id,action,detail,created_at,is_demo) SELECT ?,?,'case_tag_updated',?,?,? WHERE EXISTS(SELECT 1 FROM tags WHERE code=? AND is_demo=? AND label=? AND group_name=? AND active=?)",
+        )
+        .bind(
+          id("audit"),
+          user.id,
+          code + " · " + label,
+          now(),
+          user.is_demo,
+          code,
+          user.is_demo,
+          label,
+          group,
+          active,
+        ),
+    ]);
+    if (!result[0].meta.changes)
+      fail(
+        400,
+        "The catalogue supports 100 active tags and 200 total tags. Deactivate an unused tag first.",
+      );
+    return json({ ok: true });
+  }
   if (url.pathname === "/api/admin/account" && request.method === "GET") {
     const account = await db
       .prepare(

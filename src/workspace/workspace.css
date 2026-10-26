@@ -1614,50 +1614,6 @@
   margin: 0;
   color: var(--text);
 }
-.ws-help {
-  position: relative;
-}
-.ws-help summary {
-  list-style: none;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  width: 17px;
-  height: 17px;
-  font: 11px var(--font-data);
-  text-align: center;
-  line-height: 15px;
-  cursor: pointer;
-  color: var(--muted);
-}
-.ws-help summary::-webkit-details-marker {
-  display: none;
-}
-.ws-help[open] summary {
-  color: var(--blue);
-  border-color: var(--blue);
-}
-.ws-help > div {
-  position: absolute;
-  z-index: 8;
-  right: -140px;
-  top: 27px;
-  width: 245px;
-  padding: 17px;
-  background: var(--input);
-  border: 1px solid var(--border);
-  box-shadow: 0 5px 18px #0002;
-  font-size: 12px;
-  animation: ws-chart-enter 0.18s both;
-}
-.ws-help p {
-  font-size: 12px;
-  margin: 9px 0 14px;
-  color: var(--muted);
-}
-.ws-help a {
-  color: var(--blue);
-  text-underline-offset: 3px;
-}
 .ws-database {
   overflow: visible;
 }
@@ -1887,13 +1843,6 @@
 .ws-footer {
   padding: 17px 28px;
 }
-.workspace .ws-help summary {
-  padding: 0;
-  line-height: 15px;
-}
-.ws-help > div {
-  right: -155px;
-}
 .workspace .ws-sidebar-bottom button {
   font-size: 11px;
   padding: 7px 10px;
@@ -1988,7 +1937,7 @@
     width: 36px;
     height: 36px;
   }
-  .ws-help > div {
+  .ws-admin-help > div {
     right: -155px;
     width: 230px;
   }
@@ -2456,7 +2405,7 @@
   line-height: 1.6;
   margin: 6px 0 14px;
 }
-.ws-help {
+.ws-admin-help {
   border: 1px solid var(--border);
   background: var(--subtle);
   padding: 12px 16px;
@@ -2464,30 +2413,30 @@
   font-size: 12px;
   line-height: 1.65;
 }
-.ws-help summary {
+.ws-admin-help summary {
   cursor: pointer;
   font-weight: 600;
   color: var(--text);
 }
-.ws-help p {
+.ws-admin-help p {
   max-width: 85ch;
 }
-.ws-help ol {
+.ws-admin-help ol {
   padding-left: 20px;
   max-width: 100ch;
 }
-.ws-help li + li {
+.ws-admin-help li + li {
   margin-top: 6px;
 }
-.ws-help dl {
+.ws-admin-help dl {
   display: grid;
   gap: 10px;
   max-width: 100ch;
 }
-.ws-help dt {
+.ws-admin-help dt {
   font-weight: 600;
 }
-.ws-help dd {
+.ws-admin-help dd {
   margin: 0;
   color: var(--muted);
 }
@@ -2605,7 +2554,7 @@
   .ws-manager-priorities {
     grid-template-columns: 1fr;
   }
-  .ws-help {
+  .ws-admin-help {
     padding: 10px 12px;
   }
 }
@@ -2659,7 +2608,7 @@
 .ws-manager-home,
 .ws-database-settings,
 .ws-setup-guide,
-.ws-help,
+.ws-admin-help,
 .ws-card form,
 .ws-form-row > *,
 .ws-admin-grid > * {
@@ -2694,13 +2643,13 @@
 .ws-card h2,
 .ws-card p,
 .ws-description,
-.ws-help li {
+.ws-admin-help li {
   overflow-wrap: break-word;
 }
 .ws-card dd {
   margin: 0;
 }
-.ws-help dl {
+.ws-admin-help dl {
   grid-template-columns: minmax(0, 1fr);
 }
 .ws-report-toolbar,
@@ -2863,4 +2812,163 @@
 
 .workspace .ws-tabs button {
   flex: 0 0 auto;
+}
+
+/* Guide panels are full-width disclosure rows, never icon-sized tooltips. */
+.workspace .ws-admin-help > summary {
+  display: list-item;
+  list-style: disclosure-closed inside;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  white-space: normal;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+.workspace .ws-admin-help[open] > summary {
+  list-style-type: disclosure-open;
+}
+/* Allow content to shrink within compact grid and flex layouts. */
+.workspace
+  :is(
+    .ws-card,
+    .ws-form-row,
+    .ws-heading,
+    .ws-heading > div,
+    .ws-picker,
+    .ws-admin-help,
+    .ws-chart
+  ) {
+  min-width: 0;
+  max-width: 100%;
+}
+.workspace :is(button, summary, label, small, p, dd, a) {
+  overflow-wrap: anywhere;
+}
+.workspace button {
+  height: auto;
+  min-height: 32px;
+  white-space: normal;
+  line-height: 1.4;
+}
+.workspace :is(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.workspace .ws-intake-fields {
+  display: grid;
+  gap: 16px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.ws-file-selection {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  min-width: 0;
+}
+.workspace input[type="file"] {
+  height: auto;
+  padding: 8px;
+  width: 100%;
+}
+.ws-upload-list,
+.ws-document-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ws-upload-list li,
+.ws-document-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ws-upload-list li > div,
+.ws-document-list li > div {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ws-upload-list small,
+.ws-document-list small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.ws-upload-list progress {
+  flex-basis: 100%;
+  height: 4px;
+  accent-color: var(--blue);
+}
+.ws-chart-point {
+  animation: ws-chart-point-in 0.55s both;
+}
+@keyframes ws-chart-point-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.ws-chart-tracer {
+  pointer-events: none;
+}
+.ws-chart {
+  transition:
+    border-color 0.2s,
+    transform 0.2s;
+}
+.ws-chart:hover {
+  border-color: var(--blue);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ws-chart-tracer {
+    display: none;
+  }
+  .ws-chart-point {
+    animation: none;
+  }
+}
+.ws-tag-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.workspace .ws-tag-list > button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  width: 100%;
+  padding: 10px;
+}
+.ws-tag-list small {
+  display: block;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.workspace .ws-tag-list > button.selected {
+  border-color: var(--blue);
+}
+
+.ws-filters > .ws-picker {
+  flex: 1 1 14rem;
 }

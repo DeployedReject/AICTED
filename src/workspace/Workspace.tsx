@@ -1,3 +1,10 @@
+import Documents, {
+  FileSelection,
+  useUploads,
+  type StorageConfig,
+} from "./Documents";
+import InstitutionPicker from "./InstitutionPicker";
+import TagSettings from "./TagSettings";
 import AssignCase from "./AssignCase";
 import ManagerHome from "./ManagerHome";
 import DatabaseSettings from "./DatabaseSettings";
@@ -28,6 +35,7 @@ import caseGlyph from "../../Assets/glyphs/file-svgrepo-com.svg";
 import mailGlyph from "../../Assets/glyphs/mail-svgrepo-com.svg";
 
 type Page =
+  | "Tags"
   | "Guide"
   | "My Work"
   | "Cases"
@@ -55,14 +63,6 @@ const stamp = (s: string) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-function useDebounced(value: string) {
-  const [result, setResult] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setResult(value), 300);
-    return () => clearTimeout(t);
-  }, [value]);
-  return result;
-}
 function Skeleton() {
   return (
     <div className="ws-skeleton" role="status" aria-label="Loading">
@@ -215,6 +215,7 @@ export default function Workspace() {
         Email: "Email delivery",
         Database: "Database settings",
         Guide: "Setup guide",
+        Tags: "Case tags",
         Team: "Team workload",
       }) as Record<string, string>
     )[p] || p;
@@ -275,6 +276,7 @@ export default function Workspace() {
                   "Server",
                   "Accounts",
                   "Bureaus",
+                  "Tags",
                   "Institutions",
                   "Email",
                   "Database",
@@ -456,6 +458,7 @@ export default function Workspace() {
                                 Email: "Email delivery",
                                 Database: "Database settings",
                                 Guide: "Setup guide",
+                                Tags: "Case tags",
                                 Team: "Team workload",
                               } as Record<string, string>
                             )[page] || page}
@@ -607,9 +610,13 @@ export default function Workspace() {
                 {page === "Reports" && <Reports version={version} />}
                 {isIT && page === "Database" && <DatabaseSettings />}
                 {isIT && page === "Guide" && <SetupGuide />}
-                {isIT && page !== "Database" && page !== "Guide" && (
-                  <Admin version={version} refresh={refresh} section={page} />
-                )}
+                {isIT && page === "Tags" && <TagSettings onSaved={() => {}} />}
+                {isIT &&
+                  page !== "Database" &&
+                  page !== "Guide" &&
+                  page !== "Tags" && (
+                    <Admin version={version} refresh={refresh} section={page} />
+                  )}
               </>
             )}
           </Scene>
@@ -647,7 +654,6 @@ function CaseList({
     [to, setTo] = useState(""),
     [cursor, setCursor] = useState(""),
     [attention, setAttention] = useState("");
-  const [instSearch, setInstSearch] = useState("");
   useEffect(() => {
     const timer = setTimeout(() => setSearch(q), 350);
     return () => clearTimeout(timer);
@@ -655,9 +661,6 @@ function CaseList({
   useEffect(
     () => setCursor(""),
     [search, tag, institution, status, bureau, region, from, to, view],
-  );
-  const institutions = useLoad<{ institutions: Institution[] }>(
-    "/institutions?q=" + encodeURIComponent(useDebounced(instSearch)),
   );
   const params = new URLSearchParams({
     view,
@@ -744,40 +747,11 @@ function CaseList({
                 </option>
               ))}
             </select>
-            <details className="ws-institution-filter">
-              <summary>
-                {institution
-                  ? institutions.data?.institutions.find(
-                      (i) => i.id === institution,
-                    )?.name || "Institution selected"
-                  : "All institutions"}
-              </summary>
-              <div>
-                <input
-                  aria-label="Find institution"
-                  placeholder="Name or Permanent ID"
-                  value={instSearch}
-                  onChange={(e) => setInstSearch(e.target.value)}
-                />
-                <button onClick={() => setInstitution("")}>
-                  All institutions
-                </button>
-                {institutions.data?.institutions.map((i) => (
-                  <button
-                    key={i.id}
-                    onClick={(e) => {
-                      setInstitution(i.id);
-                      e.currentTarget
-                        .closest("details")
-                        ?.removeAttribute("open");
-                    }}
-                  >
-                    {i.name}
-                    <small>{i.permanent_id}</small>
-                  </button>
-                ))}
-              </div>
-            </details>
+            <InstitutionPicker
+              label="Filter institution"
+              name="filter_institution"
+              onSelect={(item) => setInstitution(item?.id || "")}
+            />
             {all && (
               <>
                 <select
@@ -1067,6 +1041,7 @@ function Board({
             <p>{c.next_action}</p>
             {c.approval_reason && <p>Review note: {c.approval_reason}</p>}
           </section>
+          <Documents record={c} userId={boot.user.id} onChange={refresh} />
           {canReview && (
             <section className="ws-card">
               <h2>Review proposed case</h2>
@@ -1453,26 +1428,39 @@ function NewCase({
   done: (id: string) => void;
   cancel: () => void;
 }) {
-  const [query, setQuery] = useState(""),
-    [tags, setTags] = useState<string[]>([]),
+  const [tags, setTags] = useState<string[]>([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [language, setLanguage] = useState("english"),
     [translation, setTranslation] = useState("");
-  const institutions = useLoad<{ institutions: Institution[] }>(
-    "/institutions?q=" + encodeURIComponent(useDebounced(query)),
-  );
+  const [storage, setStorage] = useState<StorageConfig>({
+    available: false,
+    max_file_bytes: 5 * 1024 * 1024,
+  });
+  const [createdId, setCreatedId] = useState("");
+  const uploads = useUploads(storage.max_file_bytes);
+  useEffect(() => {
+    api<StorageConfig>("/documents/config")
+      .then(setStorage)
+      .catch(() => {});
+  }, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     setBusy(true);
     setError("");
     try {
-      const r = await api<{ id: string }>("/cases", {
-        ...Object.fromEntries(f),
-        tags,
-      });
-      done(r.id);
+      let caseId = createdId;
+      if (!caseId) {
+        const r = await api<{ id: string }>("/cases", {
+          ...Object.fromEntries(f),
+          tags,
+        });
+        caseId = r.id;
+        setCreatedId(caseId);
+      }
+      await uploads.upload(caseId);
+      done(caseId);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -1486,162 +1474,159 @@ function NewCase({
       </button>
       <div className="ws-heading">
         <div>
-          <h1>Register</h1>
+          <h1>Register case</h1>
         </div>
-        <Badge>{boot.user.is_demo ? "DEMO CASE" : "New proposal"}</Badge>
       </div>
       <form className="ws-card ws-intake" onSubmit={submit}>
         {error && <ErrorBox text={error} />}
-        <label>
-          Subject
-          <input name="subject" required minLength={5} maxLength={160} />
-        </label>
-        <label>
-          Find institution
-          <input
-            placeholder="Institution name or Permanent ID"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </label>
-        <label>
-          Institution
-          <select name="institution_id" required>
-            <option value="">Choose an institution</option>
-            {institutions.data?.institutions.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name} · {i.permanent_id}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="ws-form-row">
+        <fieldset className="ws-intake-fields" disabled={busy || !!createdId}>
           <label>
-            Received date
-            <input
-              name="received_at"
-              type="date"
-              defaultValue={new Date().toISOString().slice(0, 10)}
-              max={new Date().toISOString().slice(0, 10)}
+            Subject
+            <input name="subject" required minLength={5} maxLength={160} />
+          </label>
+          <InstitutionPicker required />
+          <div className="ws-form-row">
+            <label>
+              Received date
+              <input
+                name="received_at"
+                type="date"
+                defaultValue={new Date().toISOString().slice(0, 10)}
+                max={new Date().toISOString().slice(0, 10)}
+                required
+              />
+            </label>
+            <label>
+              Due date
+              <input name="due_at" type="date" required />
+            </label>
+            <label>
+              Priority
+              <select name="priority">
+                <option>Routine</option>
+                <option>High</option>
+                <option>Urgent</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Complaint / description
+            <textarea
+              name="description"
               required
+              minLength={20}
+              maxLength={5000}
+              rows={5}
             />
           </label>
           <label>
-            Due date
-            <input name="due_at" type="date" required />
-          </label>
-          <label>
-            Priority
-            <select name="priority">
-              <option>Routine</option>
-              <option>High</option>
-              <option>Urgent</option>
-            </select>
-          </label>
-        </div>
-        <label>
-          Complaint / description
-          <textarea
-            name="description"
-            required
-            minLength={20}
-            maxLength={5000}
-            rows={5}
-          />
-        </label>
-        <label>
-          Original language
-          <select
-            value={language}
-            onChange={(e) => {
-              setLanguage(e.target.value);
-              setTranslation("");
-            }}
-          >
-            {[
-              "english",
-              "hindi",
-              "tamil",
-              "telugu",
-              "bengali",
-              "marathi",
-              "kannada",
-              "gujarati",
-              "malayalam",
-              "punjabi",
-              "urdu",
-            ].map((l) => (
-              <option key={l} value={l}>
-                {l[0].toUpperCase() + l.slice(1)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {translation && (
-          <div className="ws-card">
-            <b>Machine translation · English</b>
-            <p className="ws-pre">{translation}</p>
-            <small>The original description remains unchanged.</small>
-          </div>
-        )}
-        <fieldset>
-          <legend>Tags</legend>
-          <div className="ws-check-tags">
-            {boot.tags.map((t) => (
-              <label key={t.code}>
-                <input
-                  type="checkbox"
-                  checked={tags.includes(t.code)}
-                  onChange={(e) =>
-                    setTags(
-                      e.target.checked
-                        ? [...tags, t.code].slice(0, 8)
-                        : tags.filter((x) => x !== t.code),
-                    )
-                  }
-                />
-                {t.label}
-              </label>
-            ))}
-          </div>
-          <p className="ws-hint">
-            Choose up to 8 tags.
-            {boot.user.is_demo === 1
-              ? " Automatic suggestions are disabled for demo accounts."
-              : " Non-English text is translated before suggesting tags. Confirm tags before submitting."}
-          </p>
-          {boot.user.is_demo === 0 && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={async (e) => {
-                const form = e.currentTarget.form!;
-                const content = String(new FormData(form).get("description"));
-                setBusy(true);
-                try {
-                  const result = await api<{
-                    suggestions: { code: string }[];
-                    translation: string | null;
-                  }>("/tags/suggest", { text: content, language });
-                  setTranslation(result.translation || "");
-                  setTags(result.suggestions.slice(0, 5).map((t) => t.code));
-                } catch (e) {
-                  setError((e as Error).message);
-                } finally {
-                  setBusy(false);
-                }
+            Original language
+            <select
+              value={language}
+              onChange={(e) => {
+                setLanguage(e.target.value);
+                setTranslation("");
               }}
             >
-              Suggest tags
-            </button>
+              {[
+                "english",
+                "hindi",
+                "tamil",
+                "telugu",
+                "bengali",
+                "marathi",
+                "kannada",
+                "gujarati",
+                "malayalam",
+                "punjabi",
+                "urdu",
+              ].map((l) => (
+                <option key={l} value={l}>
+                  {l[0].toUpperCase() + l.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {translation && (
+            <div className="ws-card">
+              <b>Machine translation · English</b>
+              <p className="ws-pre">{translation}</p>
+              <small>The original description remains unchanged.</small>
+            </div>
           )}
+          <fieldset>
+            <legend>Tags</legend>
+            <div className="ws-check-tags">
+              {boot.tags.map((t) => (
+                <label key={t.code}>
+                  <input
+                    type="checkbox"
+                    checked={tags.includes(t.code)}
+                    onChange={(e) =>
+                      setTags(
+                        e.target.checked
+                          ? [...tags, t.code].slice(0, 8)
+                          : tags.filter((x) => x !== t.code),
+                      )
+                    }
+                  />
+                  {t.label}
+                </label>
+              ))}
+            </div>
+            <p className="ws-hint">Choose up to 8 tags.</p>
+            {boot.user.is_demo === 0 && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async (e) => {
+                  const form = e.currentTarget.form!;
+                  const content = String(new FormData(form).get("description"));
+                  setBusy(true);
+                  try {
+                    const result = await api<{
+                      suggestions: { code: string }[];
+                      translation: string | null;
+                    }>("/tags/suggest", { text: content, language });
+                    setTranslation(result.translation || "");
+                    setTags(result.suggestions.slice(0, 5).map((t) => t.code));
+                  } catch (e) {
+                    setError((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Suggest tags
+              </button>
+            )}
+          </fieldset>
+          <label>
+            Next action
+            <input name="next_action" required minLength={3} maxLength={300} />
+          </label>
         </fieldset>
-        <label>
-          Next action
-          <input name="next_action" required minLength={3} maxLength={300} />
-        </label>
+        <FileSelection
+          uploads={uploads}
+          available={storage.available}
+          maxBytes={storage.max_file_bytes}
+          busy={busy}
+        />
+        {createdId && (
+          <p>
+            Case registered. Retry any unfinished uploads, or{" "}
+            <button type="button" onClick={() => done(createdId)}>
+              Open case
+            </button>
+            .
+          </p>
+        )}
         <button className="ws-primary" disabled={busy}>
-          {busy ? "Submitting…" : "Submit for review"}
+          {busy
+            ? "Submitting…"
+            : createdId
+              ? "Finish uploads"
+              : "Submit for review"}
         </button>
       </form>
     </>

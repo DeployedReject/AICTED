@@ -22,7 +22,7 @@ export default {
         input.text.length < 20 ||
         input.text.length > 2500 ||
         !Array.isArray(input.catalogue) ||
-        input.catalogue.length > 40
+        input.catalogue.length > 100
       )
         fail(400, "Invalid tagging request.");
       const language = String(input.language || "english");
@@ -54,12 +54,19 @@ export default {
         english = translated.translated_text;
       }
       const catalogue = input.catalogue as { code: string; label: string }[];
-      const result = await env.AI.run("@cf/baai/bge-small-en-v1.5", {
-        text: [english, ...catalogue.map((t) => t.label)],
-      });
-      if (!result.data || result.data.length !== catalogue.length + 1)
-        fail(502, "Suggestions are unavailable. Choose tags manually.");
-      const vectors = result.data;
+      const texts = [english, ...catalogue.map((tag) => tag.label)],
+        vectors: number[][] = [];
+      for (let offset = 0; offset < texts.length; offset += 24) {
+        const result = await env.AI.run("@cf/baai/bge-small-en-v1.5", {
+          text: texts.slice(offset, offset + 24),
+        });
+        if (
+          !result.data ||
+          result.data.length !== Math.min(24, texts.length - offset)
+        )
+          fail(502, "Suggestions are unavailable. Choose tags manually.");
+        vectors.push(...result.data);
+      }
       const base = vectors[0];
       const norm = (v: number[]) => Math.sqrt(v.reduce((s, n) => s + n * n, 0));
       const suggestions = catalogue

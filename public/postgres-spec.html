@@ -134,10 +134,12 @@
         <a href="/postgres/schema.sql" download
           >Download the complete PostgreSQL schema</a
         >. You can also initialize a completely empty destination directly from
-        Database settings. The application requires schema version
-        <code>9</code> in <code>app_schema</code>, all supplied columns, history
-        and email triggers, and an indexed official directory. Do not adapt
-        arbitrary tables by changing only the version marker.
+        Database settings. Case document metadata is stored in
+        <code>case_documents</code>; document contents remain in private R2
+        storage and must be backed up separately. The application requires
+        schema version <code>10</code> in <code>app_schema</code>, all supplied
+        columns, history and email triggers, and an indexed official directory.
+        Do not adapt arbitrary tables by changing only the version marker.
       </p>
       <p>
         The maintained schema uses integer flags, UTF-8 text identifiers, UTC
@@ -176,7 +178,10 @@
         </tr>
         <tr>
           <td>Supporting state</td>
-          <td>tag_cache, inference_usage, production_bootstrap, app_schema</td>
+          <td>
+            tag_cache, inference_usage, production_bootstrap, app_schema,
+            case_documents
+          </td>
         </tr>
       </table>
       <p>

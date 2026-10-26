@@ -24,6 +24,7 @@
     },
   ],
   "services": [
+    { "binding": "DOCUMENTS", "service": "aicted-documents" },
     { "binding": "DATABASE", "service": "aicted-database" },
     { "binding": "CASEWORK", "service": "aicted-casework" },
     { "binding": "NOTIFICATIONS", "service": "aicted-notifications" },

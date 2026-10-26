@@ -8,6 +8,7 @@ export interface Env {
   CONFIG_KEY?: string;
   BOOTSTRAP_TOKEN?: string;
   NOTIFICATIONS?: Fetcher;
+  DOCUMENTS?: Fetcher;
   CASEWORK: Fetcher;
   RELEVANCE: Fetcher;
   ASSETS: Fetcher;

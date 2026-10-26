@@ -32,7 +32,8 @@ function Panel({
                   "Cases received each week, including submissions awaiting review.",
                 "Case status":
                   "Current processing status of approved cases in this report.",
-                "Bureau workload": "Active and disposed assignments, grouped by bureau.",
+                "Bureau workload":
+                  "Active and disposed assignments, grouped by bureau.",
                 "Pending ageing":
                   "Days since receipt for active approved cases. This measures age, not lateness.",
                 "Regional spread":
@@ -159,7 +160,11 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
             </pattern>
           </defs>
           {[0, 1, 2, 3, 4].map((i) => (
-            <g key={i}>
+            <g
+              key={i}
+              className="ws-chart-point"
+              style={{ animationDelay: `${0.2 + i * 0.08}s` }}
+            >
               <line
                 x1="48"
                 x2="638"
@@ -187,6 +192,14 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
             pathLength="1"
             className="ws-chart-line"
           />
+          <circle className="ws-chart-tracer" r="4" fill="var(--blue)">
+            <animateMotion
+              path={line}
+              dur="4s"
+              begin="1.5s"
+              repeatCount="indefinite"
+            />
+          </circle>
           {points.map((p, i) => (
             <g key={i}>
               <text x={p.x} y="248" textAnchor="middle">

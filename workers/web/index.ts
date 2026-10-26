@@ -210,9 +210,13 @@ export default {
       headers.delete("x-db-generation");
       if (env.DB_GENERATION?.value)
         headers.set("x-db-generation", env.DB_GENERATION.value);
-      const response = await env.CASEWORK.fetch(
-        new Request(request, { headers }),
-      );
+      const documentsRequest =
+        url.pathname === "/api/documents/config" ||
+        /^\/api\/cases\/[^/]+\/documents(?:\/[^/]+)?$/.test(url.pathname);
+      if (documentsRequest && !env.DOCUMENTS)
+        fail(503, "Document storage is not configured.");
+      const service = documentsRequest ? env.DOCUMENTS! : env.CASEWORK;
+      const response = await service.fetch(new Request(request, { headers }));
       if (
         !user.is_demo &&
         request.method === "POST" &&

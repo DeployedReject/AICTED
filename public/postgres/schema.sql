@@ -1,4 +1,4 @@
--- AICTED PostgreSQL 16+ live application schema, version 9.
+-- AICTED PostgreSQL 16+ live application schema, version 10.
 BEGIN;
 -- Compatible application schema. Connection registry and IT recovery remain in the original D1.
 
@@ -15,7 +15,7 @@ CREATE INDEX sessions_expiry ON sessions(expires_at);
 CREATE INDEX sessions_official ON sessions(official_id,expires_at);
 CREATE TABLE institutions(id TEXT COLLATE "C" PRIMARY KEY,name TEXT COLLATE "C" NOT NULL,permanent_id TEXT COLLATE "C" NOT NULL UNIQUE,city TEXT COLLATE "C" NOT NULL,state TEXT COLLATE "C" NOT NULL,region TEXT COLLATE "C" NOT NULL,is_demo SMALLINT NOT NULL DEFAULT 0 CHECK(is_demo IN(0,1)));
 CREATE INDEX institution_search ON institutions(is_demo,name);
-CREATE TABLE tags(code TEXT COLLATE "C" PRIMARY KEY,label TEXT COLLATE "C" NOT NULL,group_name TEXT COLLATE "C" NOT NULL,active SMALLINT NOT NULL DEFAULT 1,source TEXT COLLATE "C" NOT NULL DEFAULT 'reference');
+CREATE TABLE tags(code TEXT COLLATE "C" NOT NULL,label TEXT COLLATE "C" NOT NULL,group_name TEXT COLLATE "C" NOT NULL,active SMALLINT NOT NULL DEFAULT 1,source TEXT COLLATE "C" NOT NULL DEFAULT 'reference',is_demo INTEGER NOT NULL DEFAULT 0 CHECK(is_demo IN(0,1)),PRIMARY KEY(code,is_demo));
 CREATE TABLE cases(
  id TEXT COLLATE "C" PRIMARY KEY,subject TEXT COLLATE "C" NOT NULL,institution_id TEXT COLLATE "C" NOT NULL REFERENCES institutions(id),bureau TEXT COLLATE "C" NOT NULL,
  assigned_to TEXT COLLATE "C" NOT NULL REFERENCES officials(id),created_by TEXT COLLATE "C" NOT NULL REFERENCES officials(id),
@@ -90,8 +90,20 @@ CREATE TABLE production_bootstrap (id INTEGER PRIMARY KEY CHECK(id=1), completed
 CREATE OR REPLACE FUNCTION json_each(input TEXT) RETURNS TABLE(value TEXT) LANGUAGE SQL IMMUTABLE AS $$ SELECT jsonb_array_elements_text(input::jsonb); $$;
 CREATE OR REPLACE FUNCTION min(a TEXT,b TEXT) RETURNS TEXT LANGUAGE SQL IMMUTABLE AS $$ SELECT LEAST(a,b); $$;
 CREATE OR REPLACE FUNCTION max(a TEXT,b TEXT) RETURNS TEXT LANGUAGE SQL IMMUTABLE AS $$ SELECT GREATEST(a,b); $$;
+CREATE INDEX tags_scope ON tags(is_demo,active,group_name,label);
+CREATE INDEX institutions_prefix_name ON institutions(is_demo,lower(name));
+CREATE INDEX institutions_prefix_id ON institutions(is_demo,lower(permanent_id));
+CREATE TABLE case_documents(
+ id TEXT COLLATE "C" PRIMARY KEY,case_id TEXT COLLATE "C" NOT NULL REFERENCES cases(id),
+ uploaded_by TEXT COLLATE "C" NOT NULL REFERENCES officials(id),filename TEXT COLLATE "C" NOT NULL,
+ content_type TEXT COLLATE "C" NOT NULL,bytes INTEGER NOT NULL CHECK(bytes>0),sha256 TEXT COLLATE "C" NOT NULL,
+ object_key TEXT COLLATE "C" NOT NULL UNIQUE,status TEXT COLLATE "C" NOT NULL CHECK(status IN('uploading','ready','deleting','deleted')),
+ is_demo INTEGER NOT NULL CHECK(is_demo IN(0,1)),created_at TEXT COLLATE "C" NOT NULL
+);
+CREATE INDEX documents_case ON case_documents(case_id,status,created_at);
+CREATE INDEX documents_dataset ON case_documents(is_demo,status,created_at);
 CREATE TABLE app_schema(version INTEGER PRIMARY KEY,applied_at TEXT COLLATE "C" NOT NULL);
-INSERT INTO app_schema VALUES(9,to_char(now() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
+INSERT INTO app_schema VALUES(10,to_char(now() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 CREATE OR REPLACE FUNCTION enqueue_case_mail() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
  INSERT INTO notification_outbox(id,recipient_id,case_id,event_id,kind,created_at,updated_at)
  SELECT 'mail-'||NEW.id,c.assigned_to,c.id,NEW.id,'update',NEW.created_at,NEW.created_at

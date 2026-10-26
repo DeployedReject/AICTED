@@ -11,6 +11,7 @@ const help: Record<
       "Choose how long new sign-in sessions last.",
       "Set the number of days before a case deadline to start reminders.",
       "Configure email delivery, then create accounts and reporting lines.",
+      "Document uploads require a private Cloudflare R2 bucket bound to the documents service. Enable R2 in your Cloudflare account before the storage connection is deployed. Documents remain private and follow case access permissions.",
     ],
     fields: [
       [
@@ -77,6 +78,29 @@ const help: Record<
       ],
     ],
   },
+  Tags: {
+    title: "Case tags",
+    intro: "Add or edit the tags officials use to classify cases.",
+    steps: [
+      "Choose a tag from the catalogue to change its display name or category group.",
+      "Keep an existing tag’s code unchanged so older cases retain their classification.",
+      "Turn off Available for new cases to retire a tag. Existing case history keeps it.",
+    ],
+    fields: [
+      [
+        "Tag code",
+        "Stable identifier such as FEE_REFUND. Use a different code when creating a separate classification.",
+      ],
+      [
+        "Category group",
+        "Related tags appear together when registering a case.",
+      ],
+      [
+        "Available for new cases",
+        "Only active tags are offered for new cases and automatic suggestions.",
+      ],
+    ],
+  },
   Institutions: {
     title: "Institution records",
     intro: "Register each institution once using its AICTE Permanent ID.",
@@ -139,6 +163,7 @@ const help: Record<
       "Choose Copy current data or Use prepared database. Copy requires an empty application dataset; prepared mode must contain your production IT account ID.",
       "Type the connection name and activate. Workspace access pauses while records are copied and verified. Keep this panel open or return later; transfer continues on the server.",
       "If verification fails, the source remains active. Partial destination records are retained for inspection.",
+      "Case document metadata moves with the database. Files remain in the private R2 bucket; a SQL export does not include document contents. Retain and back up the bucket separately.",
       "To revert later, select the previous connection and use prepared mode. This restores its earlier dataset; it does not copy newer changes back.",
     ],
     fields: [
@@ -175,7 +200,7 @@ export default function ITHelp({
   const entry = help[section];
   if (!entry) return null;
   return (
-    <details className="ws-help" open={expanded || undefined}>
+    <details className="ws-admin-help" open={expanded || undefined}>
       <summary>{entry.title} guide</summary>
       <p>{entry.intro}</p>
       <ol>

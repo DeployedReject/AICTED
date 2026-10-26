@@ -70,7 +70,8 @@ export default {
       if (
         path === "/api/admin" ||
         path === "/api/admin/officials" ||
-        path === "/api/admin/account"
+        path === "/api/admin/account" ||
+        path === "/api/admin/tags"
       )
         return admin(request, env, user);
       if (request.method === "GET" && path === "/api/bootstrap") {
@@ -80,8 +81,9 @@ export default {
           Promise.resolve({ results: [user] }),
           bootDb
             .prepare(
-              "SELECT code,label,group_name FROM tags WHERE active=1 ORDER BY group_name,label LIMIT 100",
+              "SELECT code,label,group_name FROM tags WHERE active=1 AND is_demo=? ORDER BY group_name,label LIMIT 100",
             )
+            .bind(user.is_demo)
             .all(),
           summary(env, user),
           bootDb
@@ -179,6 +181,21 @@ export default {
         return json({
           cases: rows,
           next: result.results.length > limit ? rows[rows.length - 1].id : null,
+        });
+      }
+      if (request.method === "GET" && path === "/api/institutions/search") {
+        const query = (url.searchParams.get("q") || "").trim().slice(0, 100);
+        if (query.length < 2) return json({ institutions: [], more: false });
+        const prefix = query.replace(/[\\%_]/g, "\\$&") + "%";
+        const result = await db
+          .prepare(
+            "SELECT id,name,permanent_id,city,state,region,is_demo FROM institutions WHERE is_demo=? AND (name LIKE ? ESCAPE '\\' OR permanent_id LIKE ? ESCAPE '\\') ORDER BY name,id LIMIT 13",
+          )
+          .bind(user.is_demo, prefix, prefix)
+          .all();
+        return json({
+          institutions: result.results.slice(0, 12),
+          more: result.results.length > 12,
         });
       }
       if (request.method === "GET" && path === "/api/institutions") {
@@ -356,7 +373,10 @@ export default {
           : [];
         const known = (
           await db
-            .prepare("SELECT code FROM tags WHERE active=1 LIMIT 100")
+            .prepare(
+              "SELECT code FROM tags WHERE active=1 AND is_demo=? LIMIT 100",
+            )
+            .bind(user.is_demo)
             .all<{ code: string }>()
         ).results.map((t) => t.code);
         if (tagCodes.some((t) => !known.includes(t)))
@@ -954,8 +974,9 @@ export default {
         const catalogue = (
           await db
             .prepare(
-              "SELECT code,label FROM tags WHERE active=1 ORDER BY code LIMIT 40",
+              "SELECT code,label FROM tags WHERE active=1 AND is_demo=? ORDER BY code LIMIT 100",
             )
+            .bind(user.is_demo)
             .all()
         ).results;
         const language = textField(
