@@ -1,4 +1,4 @@
--- AICTED PostgreSQL 16+ live application schema, version 10.
+-- AICTED PostgreSQL 16+ live application schema, version 11.
 BEGIN;
 -- Compatible application schema. Connection registry and IT recovery remain in the original D1.
 
@@ -102,8 +102,9 @@ CREATE TABLE case_documents(
 );
 CREATE INDEX documents_case ON case_documents(case_id,status,created_at);
 CREATE INDEX documents_dataset ON case_documents(is_demo,status,created_at);
+CREATE TABLE case_folders(case_id TEXT COLLATE "C" PRIMARY KEY REFERENCES cases(id),drive_url TEXT COLLATE "C" NOT NULL,updated_by TEXT COLLATE "C" NOT NULL REFERENCES officials(id),updated_at TEXT COLLATE "C" NOT NULL);
 CREATE TABLE app_schema(version INTEGER PRIMARY KEY,applied_at TEXT COLLATE "C" NOT NULL);
-INSERT INTO app_schema VALUES(10,to_char(now() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
+INSERT INTO app_schema VALUES(11,to_char(now() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
 CREATE OR REPLACE FUNCTION enqueue_case_mail() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
  INSERT INTO notification_outbox(id,recipient_id,case_id,event_id,kind,created_at,updated_at)
  SELECT 'mail-'||NEW.id,c.assigned_to,c.id,NEW.id,'update',NEW.created_at,NEW.created_at

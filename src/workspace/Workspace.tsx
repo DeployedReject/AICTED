@@ -1,8 +1,5 @@
-import Documents, {
-  FileSelection,
-  useUploads,
-  type StorageConfig,
-} from "./Documents";
+import Documents, { FolderField } from "./Documents";
+import { driveFolder } from "../../packages/shared/drive";
 import InstitutionPicker from "./InstitutionPicker";
 import TagSettings from "./TagSettings";
 import AssignCase from "./AssignCase";
@@ -1041,7 +1038,7 @@ function Board({
             <p>{c.next_action}</p>
             {c.approval_reason && <p>Review note: {c.approval_reason}</p>}
           </section>
-          <Documents record={c} userId={boot.user.id} onChange={refresh} />
+          <Documents record={c} onChange={refresh} />
           {canReview && (
             <section className="ws-card">
               <h2>Review proposed case</h2>
@@ -1433,23 +1430,15 @@ function NewCase({
     [busy, setBusy] = useState(false),
     [language, setLanguage] = useState("english"),
     [translation, setTranslation] = useState("");
-  const [storage, setStorage] = useState<StorageConfig>({
-    available: false,
-    max_file_bytes: 5 * 1024 * 1024,
-  });
   const [createdId, setCreatedId] = useState("");
-  const uploads = useUploads(storage.max_file_bytes);
-  useEffect(() => {
-    api<StorageConfig>("/documents/config")
-      .then(setStorage)
-      .catch(() => {});
-  }, []);
+  const [folderUrl, setFolderUrl] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     setBusy(true);
     setError("");
     try {
+      const url = driveFolder(folderUrl);
       let caseId = createdId;
       if (!caseId) {
         const r = await api<{ id: string }>("/cases", {
@@ -1459,7 +1448,11 @@ function NewCase({
         caseId = r.id;
         setCreatedId(caseId);
       }
-      await uploads.upload(caseId);
+      if (url)
+        await api(
+          "/cases/" + encodeURIComponent(caseId) + "/documents/folder",
+          { url },
+        );
       done(caseId);
     } catch (e) {
       setError((e as Error).message);
@@ -1606,15 +1599,10 @@ function NewCase({
             <input name="next_action" required minLength={3} maxLength={300} />
           </label>
         </fieldset>
-        <FileSelection
-          uploads={uploads}
-          available={storage.available}
-          maxBytes={storage.max_file_bytes}
-          busy={busy}
-        />
+        <FolderField value={folderUrl} onChange={setFolderUrl} busy={busy} />
         {createdId && (
           <p>
-            Case registered. Retry any unfinished uploads, or{" "}
+            Case registered. Save the folder link again, or{" "}
             <button type="button" onClick={() => done(createdId)}>
               Open case
             </button>
@@ -1625,7 +1613,7 @@ function NewCase({
           {busy
             ? "Submitting…"
             : createdId
-              ? "Finish uploads"
+              ? "Save folder link"
               : "Submit for review"}
         </button>
       </form>

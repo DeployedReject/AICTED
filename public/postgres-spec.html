@@ -135,11 +135,11 @@
           >Download the complete PostgreSQL schema</a
         >. You can also initialize a completely empty destination directly from
         Database settings. Case document metadata is stored in
-        <code>case_documents</code>; document contents remain in private R2
-        storage and must be backed up separately. The application requires
-        schema version <code>10</code> in <code>app_schema</code>, all supplied
-        columns, history and email triggers, and an indexed official directory.
-        Do not adapt arbitrary tables by changing only the version marker.
+        <code>case_folders</code>. Documents remain in Google Drive; sharing and
+        backups are managed separately. The application requires schema version
+        <code>11</code> in <code>app_schema</code>, all supplied columns,
+        history and email triggers, and an indexed official directory. Do not
+        adapt arbitrary tables by changing only the version marker.
       </p>
       <p>
         The maintained schema uses integer flags, UTF-8 text identifiers, UTC
@@ -180,7 +180,7 @@
           <td>Supporting state</td>
           <td>
             tag_cache, inference_usage, production_bootstrap, app_schema,
-            case_documents
+            case_documents, case_folders
           </td>
         </tr>
       </table>

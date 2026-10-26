@@ -2972,3 +2972,13 @@
 .ws-filters > .ws-picker {
   flex: 1 1 14rem;
 }
+.workspace .ws-folder-link > a {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  max-width: 100%;
+  text-decoration: none;
+}
+.ws-folder-link {
+  margin-bottom: 16px;
+}

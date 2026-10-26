@@ -13,8 +13,5 @@
     },
   ],
   "services": [{ "binding": "DATABASE", "service": "aicted-database" }],
-  "r2_buckets": [
-    { "binding": "FILES", "bucket_name": "aicted-case-documents" },
-  ],
-  "triggers": { "crons": ["17 3 * * *"] },
+  "triggers": { "crons": [] },
 }

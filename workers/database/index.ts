@@ -119,10 +119,10 @@ export class DatabaseRouter extends DurableObject<DatabaseEnv> {
           q("SELECT version FROM app_schema ORDER BY version DESC LIMIT 1"),
         ])
       )[0].results[0];
-      if (Number(version?.version) !== 10)
+      if (Number(version?.version) !== 11)
         fail(
           409,
-          "Schema version 10 is required. Initialize an empty destination or follow Database help.",
+          "Schema version 11 is required. Initialize an empty destination or follow Database help.",
         );
       if (p.source === "postgres") {
         const collation = (

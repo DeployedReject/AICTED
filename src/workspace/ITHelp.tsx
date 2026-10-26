@@ -11,7 +11,7 @@ const help: Record<
       "Choose how long new sign-in sessions last.",
       "Set the number of days before a case deadline to start reminders.",
       "Configure email delivery, then create accounts and reporting lines.",
-      "Document uploads require a private Cloudflare R2 bucket bound to the documents service. Enable R2 in your Cloudflare account before the storage connection is deployed. Documents remain private and follow case access permissions.",
+      "Documents use Google Drive folder links. Create a restricted folder for each case, share it with the relevant Google accounts, and paste its link into the case. No Google API key or R2 setup is required. Portal access does not grant Drive access; update Drive sharing separately when cases are assigned or coordinated.",
     ],
     fields: [
       [
@@ -163,7 +163,7 @@ const help: Record<
       "Choose Copy current data or Use prepared database. Copy requires an empty application dataset; prepared mode must contain your production IT account ID.",
       "Type the connection name and activate. Workspace access pauses while records are copied and verified. Keep this panel open or return later; transfer continues on the server.",
       "If verification fails, the source remains active. Partial destination records are retained for inspection.",
-      "Case document metadata moves with the database. Files remain in the private R2 bucket; a SQL export does not include document contents. Retain and back up the bucket separately.",
+      "Case folder links move with the database. Documents stay in Google Drive; a SQL export does not include their contents or sharing settings. Keep access to the Google accounts that own the folders.",
       "To revert later, select the previous connection and use prepared mode. This restores its earlier dataset; it does not copy newer changes back.",
     ],
     fields: [
