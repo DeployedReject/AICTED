@@ -33,12 +33,11 @@ This checks both frontend and Worker TypeScript and produces the static `dist/`.
 
 Select **Test** and enter ID **0000**,
 password **111111**. These credentials authenticate only the demo dataset.
-Other demo officials have no passwords and cannot log in directly. The authenticated
-0000 session can preview the preconfigured official/manager personas with the
-header selector. IT is separated at `/it`, reached by the footer link, and uses ID
-0000 / password 111111 for its demo without a designation dropdown. IT sessions
-cannot be entered by previewing an IT persona from the official portal. Every
-preview remains within `is_demo=1` records.
+Other demo officials have no passwords and cannot log in directly. There is no
+impersonation or workspace identity switch. IT is separated at `/it`, reached by
+the footer link, and uses ID 0000 / password 111111 for its isolated demo.
+Workspace HTML routes and API requests both require a server-validated HttpOnly
+session cookie; portal roles are enforced server-side.
 AI inference is blocked for all demo personas. Demo case, comment and message
 limits prevent unbounded storage growth. Changes persist and are visible to other testers.
 
@@ -132,10 +131,35 @@ institution results 30, directory 100, recent case events 60, messages 50, and r
 assignment, institution, team, grants and event lookups reduce scans. Larger production
 directories, report exports and complete event archives will need additional paging.
 
-Build and browser/API integration checks cover exact test credentials, demo scoping,
-unauthorised reads/actions, intake decisions, returned-case resubmission, comments,
-both coordination approvals, selected-user sharing, revocation, case-linked messages,
-IT restrictions, cycle checks, desktop/mobile navigation and logout.
+The current update was compiled with `npm run build`. Browser/API testing is left
+to the owner, as requested. Earlier runtime checks do not verify this update.
+
+## Production setup
+
+Open `/it/setup` and use the locally stored, ignored `seed/bootstrap-token.txt`
+setup code to create the first production IT account. Setup is one-time and atomic.
+Do not publish that code. Cloudflare's `BOOTSTRAP_TOKEN` can be removed afterward.
+IT can create official/manager accounts, assign reporting lines and email addresses,
+configure the canonical bureau catalogue, site URL, session duration and reminders.
+Accounts are active only after IT creates them; choosing a designation grants no authority.
+
+Email settings support Resend and SendGrid, separate recovery/update senders,
+reply-to and support addresses, opt-in delivery and daily attempt caps. Verify sender
+domains with the chosen provider, paste its API key, save settings, then send a
+verification message to the signed-in IT account. Keys are encrypted with AES-GCM
+and the Cloudflare `CONFIG_KEY` secret. Normal settings responses contain only
+metadata; revealing a key requires an explicit audited request. Demo accounts cannot
+store production credentials, reveal secrets, or send mail. Do not rotate CONFIG_KEY
+without decrypting/re-encrypting stored secrets first.
+
+The private `aicted-notifications` Worker handles recovery and queued case updates;
+a 15-minute cron schedules bounded reminders. Accepted means accepted by the email
+provider, not guaranteed inbox delivery. PostgreSQL/D1 source settings remain migration
+preparation; saving them does not switch the live database.
+
+Official autocomplete uses two-character minimum, 500 ms debounce, five-minute
+bounded client cache, concurrent-request deduplication, and indexed FTS results limited
+to 20. The workspace no longer loads the entire official directory at startup.
 
 The login map remains entirely local SVG/vector data, hidden on phones, with reduced
 motion support. The new AICTE mark is a transparent minimalist SVG adaptation.

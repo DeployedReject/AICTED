@@ -12,5 +12,8 @@
       "migrations_dir": "../../database/migrations",
     },
   ],
-  "services": [{ "binding": "RELEVANCE", "service": "aicted-relevance" }],
+  "services": [
+    { "binding": "RELEVANCE", "service": "aicted-relevance" },
+    { "binding": "NOTIFICATIONS", "service": "aicted-notifications" },
+  ],
 }

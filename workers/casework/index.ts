@@ -22,6 +22,8 @@ import {
 } from "./access";
 
 import { admin } from "./admin";
+import { directory } from "./directory";
+import { overlaps } from "./overlaps";
 const limit = 25;
 function event(
   db: D1Database,
@@ -40,9 +42,14 @@ function event(
 async function summary(env: Env, user: Official) {
   const s = scope(user);
   return env.DB.prepare(
-    `${s.sql} SELECT COUNT(*) AS total,COALESCE(SUM(intake='Approved' AND status='Pending'),0) AS pending,COALESCE(SUM(intake='Approved' AND status IN('Under process','Awaiting information')),0) AS processing,COALESCE(SUM(intake='Approved' AND status='Disposed'),0) AS disposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at<?),0) AS overdue,COALESCE(SUM(intake='Approved' AND escalated=1 AND status<>'Disposed'),0) AS escalated,COALESCE(SUM(intake='Submitted'),0) AS proposed FROM cases WHERE id IN(SELECT id FROM visible)`,
+    `${s.sql} SELECT COUNT(*) AS total,COALESCE(SUM(intake='Approved' AND status='Pending'),0) AS pending,COALESCE(SUM(intake='Approved' AND status IN('Under process','Awaiting information')),0) AS processing,COALESCE(SUM(intake='Approved' AND status='Disposed'),0) AS disposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at<?),0) AS overdue,COALESCE(SUM(intake='Approved' AND escalated=1 AND status<>'Disposed'),0) AS escalated,COALESCE(SUM(intake='Submitted'),0) AS proposed,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=cases.institution_id AND other.is_demo=cases.is_demo AND other.bureau<>cases.bureau AND other.intake='Approved' AND other.status<>'Disposed')),0) AS overlaps,COALESCE(SUM(intake='Approved' AND status<>'Disposed' AND due_at>=? AND due_at<=?),0) AS due_soon FROM cases WHERE id IN(SELECT id FROM visible)`,
   )
-    .bind(...s.args, now())
+    .bind(
+      ...s.args,
+      now(),
+      now(),
+      new Date(Date.now() + 3 * 86400000).toISOString(),
+    )
     .first();
 }
 export default {
@@ -53,28 +60,33 @@ export default {
         url = new URL(request.url),
         path = url.pathname;
       const s = scope(user);
+      if (path === "/api/overlaps" && request.method === "GET")
+        return overlaps(env, user);
+      if (path === "/api/officials" && request.method === "GET")
+        return directory(url, env, user);
       if (path === "/api/admin" || path === "/api/admin/officials")
         return admin(request, env, user);
       if (request.method === "GET" && path === "/api/bootstrap") {
-        const [officials, tags, counts] = await Promise.all([
+        const [officials, tags, counts, units] = await Promise.all([
+          Promise.resolve({ results: [user] }),
           db
             .prepare(
-              `SELECT ${userColumns} FROM officials WHERE is_demo=? AND active=1 ORDER BY bureau,name LIMIT 100`,
-            )
-            .bind(user.is_demo)
-            .all(),
-          db
-            .prepare(
-              "SELECT code,label,group_name FROM tags ORDER BY group_name,label LIMIT 100",
+              "SELECT code,label,group_name FROM tags WHERE active=1 ORDER BY group_name,label LIMIT 100",
             )
             .all(),
           summary(env, user),
+          db
+            .prepare(
+              "SELECT code,name,unit_type,verification FROM org_units WHERE active=1 ORDER BY name",
+            )
+            .all(),
         ]);
         return json({
           user,
           officials: officials.results,
           tags: tags.results,
           summary: counts,
+          units: units.results,
         });
       }
       if (request.method === "GET" && path === "/api/cases") {
@@ -132,6 +144,12 @@ export default {
             "%" + params.get("q")?.slice(0, 100) + "%",
           );
         }
+        if (params.get("attention") === "due-soon") {
+          conditions.push(
+            "c.status<>'Disposed' AND c.due_at>=? AND c.due_at<=?",
+          );
+          args.push(now(), new Date(Date.now() + 3 * 86400000).toISOString());
+        }
         if (params.get("attention") === "overdue") {
           conditions.push("c.status<>'Disposed' AND c.due_at<?");
           args.push(now());
@@ -180,7 +198,7 @@ export default {
       if (request.method === "GET" && path === "/api/reports") {
         const rows = await db
           .prepare(
-            `${s.sql} SELECT c.bureau,i.region,c.status,c.intake,c.escalated,c.received_at,c.due_at,c.updated_at FROM cases c JOIN institutions i ON i.id=c.institution_id WHERE c.id IN(SELECT id FROM visible) ORDER BY c.received_at DESC LIMIT 500`,
+            `${s.sql} SELECT c.bureau,i.region,c.status,c.intake,c.escalated,c.received_at,c.due_at,c.updated_at,(SELECT MAX(created_at) FROM case_events e WHERE e.case_id=c.id AND e.kind='disposed') disposed_at,(SELECT COUNT(*) FROM case_events e WHERE e.case_id=c.id AND e.kind='transferred') transfers,(c.intake='Approved' AND c.status<>'Disposed' AND EXISTS(SELECT 1 FROM cases other WHERE other.institution_id=c.institution_id AND other.is_demo=c.is_demo AND other.bureau<>c.bureau AND other.intake='Approved' AND other.status<>'Disposed')) overlaps FROM cases c JOIN institutions i ON i.id=c.institution_id WHERE c.id IN(SELECT id FROM visible) ORDER BY c.received_at DESC LIMIT 500`,
           )
           .bind(...s.args)
           .all();
@@ -277,7 +295,7 @@ export default {
           : [];
         const known = (
           await db
-            .prepare("SELECT code FROM tags LIMIT 100")
+            .prepare("SELECT code FROM tags WHERE active=1 LIMIT 100")
             .all<{ code: string }>()
         ).results.map((t) => t.code);
         if (tagCodes.some((t) => !known.includes(t)))
@@ -344,7 +362,7 @@ export default {
         return json({ id: caseId }, 201);
       }
       const match = path.match(
-        /^\/api\/cases\/([^/]+)(?:\/(comments|action|decision|coordination|resubmit))?$/,
+        /^\/api\/cases\/([^/]+)(?:\/(comments|action|decision|coordination|resubmit|relations))?$/,
       );
       if (match) {
         const caseId = decodeURIComponent(match[1]),
@@ -352,31 +370,33 @@ export default {
           action = match[2];
         const canAct = await mayAct(db, user, c);
         if (request.method === "GET" && !action) {
-          const [events, coordination, candidates] = await Promise.all([
-            db
-              .prepare(
-                `SELECT e.*,o.name actor_name,o.designation,o.bureau FROM case_events e JOIN officials o ON o.id=e.actor_id WHERE e.case_id=? ORDER BY e.created_at DESC,e.id DESC LIMIT 60`,
-              )
-              .bind(caseId)
-              .all(),
-            db
-              .prepare(
-                `SELECT r.*,o.name target_name FROM coordination_requests r JOIN officials o ON o.id=r.target_official_id WHERE r.case_id=? ORDER BY r.created_at DESC LIMIT 20`,
-              )
-              .bind(caseId)
-              .all(),
-            db
-              .prepare(
-                `SELECT DISTINCT other.bureau FROM cases other WHERE other.is_demo=? AND other.institution_id=? AND other.bureau<>? AND other.intake='Approved' AND EXISTS(SELECT 1 FROM json_each(other.tags) tag JOIN json_each(?) own ON own.value=tag.value) LIMIT 6`,
-              )
-              .bind(
-                user.is_demo,
-                c.institution_id,
-                c.bureau,
-                JSON.stringify(c.tags),
-              )
-              .all(),
-          ]);
+          const [events, coordination, candidates, relations] =
+            await Promise.all([
+              db
+                .prepare(
+                  `SELECT e.*,o.name actor_name,o.designation,o.bureau FROM case_events e JOIN officials o ON o.id=e.actor_id WHERE e.case_id=? ORDER BY e.created_at DESC,e.id DESC LIMIT 60`,
+                )
+                .bind(caseId)
+                .all(),
+              db
+                .prepare(
+                  `SELECT r.*,o.name target_name FROM coordination_requests r JOIN officials o ON o.id=r.target_official_id WHERE r.case_id=? ORDER BY r.created_at DESC LIMIT 20`,
+                )
+                .bind(caseId)
+                .all(),
+              db
+                .prepare(
+                  `SELECT DISTINCT other.bureau FROM cases other WHERE other.is_demo=? AND other.institution_id=? AND other.bureau<>? AND other.intake='Approved' AND other.status<>'Disposed' LIMIT 6`,
+                )
+                .bind(user.is_demo, c.institution_id, c.bureau)
+                .all(),
+              db
+                .prepare(
+                  `${s.sql} SELECT r.kind,r.created_at,CASE WHEN other.id IN(SELECT id FROM visible) THEN other.id ELSE NULL END related_id,CASE WHEN other.id IN(SELECT id FROM visible) THEN other.subject ELSE NULL END subject FROM case_relations r JOIN cases other ON other.id=CASE WHEN r.case_id=? THEN r.related_case_id ELSE r.case_id END WHERE r.case_id=? OR r.related_case_id=? ORDER BY r.created_at DESC LIMIT 25`,
+                )
+                .bind(...s.args, caseId, caseId, caseId)
+                .all(),
+            ]);
           const records = await Promise.all(
             coordination.results.map(async (r) => ({
               ...r,
@@ -402,6 +422,7 @@ export default {
             events: events.results,
             coordination: records,
             candidates: candidates.results,
+            relations: relations.results,
           });
         }
         if (request.method === "POST") {
@@ -419,7 +440,42 @@ export default {
             ) >= 100
           )
             fail(429, "This demo case has reached its update limit.");
-          if (action === "resubmit") {
+          if (action === "relations") {
+            if (!canAct || c.intake !== "Approved")
+              fail(403, "Only the case owner or manager can link cases.");
+            const other = await readable(
+              db,
+              user,
+              textField(input.related_case_id, "Related case ID", 100),
+            );
+            if (other.id === c.id || other.institution_id !== c.institution_id)
+              fail(
+                400,
+                "Choose another accessible case for the same institution.",
+              );
+            const kind = String(input.kind);
+            if (!["Related", "Duplicate", "Unrelated"].includes(kind))
+              fail(400, "Choose a relation.");
+            if (kind === "Duplicate" && user.role !== "manager")
+              fail(403, "A manager must confirm duplicates.");
+            const reason = textField(input.reason, "Relation note", 1000, 3),
+              pair = [c.id, other.id].sort();
+            await db.batch([
+              db
+                .prepare(
+                  "INSERT INTO case_relations(case_id,related_case_id,kind,reason,created_by,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(case_id,related_case_id) DO UPDATE SET kind=excluded.kind,reason=excluded.reason,created_by=excluded.created_by,created_at=excluded.created_at",
+                )
+                .bind(pair[0], pair[1], kind, reason, user.id, stamp),
+              event(
+                db,
+                caseId,
+                "related",
+                user,
+                `${kind} relation confirmed. ${reason}`,
+                stamp,
+              ),
+            ]);
+          } else if (action === "resubmit") {
             if (c.created_by !== user.id || c.intake !== "Returned")
               fail(
                 403,
@@ -799,7 +855,9 @@ export default {
           content = textField(input.text, "Complaint text", 2500, 20);
         const catalogue = (
           await db
-            .prepare("SELECT code,label FROM tags ORDER BY code LIMIT 40")
+            .prepare(
+              "SELECT code,label FROM tags WHERE active=1 ORDER BY code LIMIT 40",
+            )
             .all()
         ).results;
         const language = textField(

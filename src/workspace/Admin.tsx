@@ -3,8 +3,27 @@ import type { FormEvent } from "react";
 import type { Official } from "../../packages/shared/types";
 import { api } from "./api";
 import { reduced } from "./Motion";
+import EmailSettings from "./EmailSettings";
+import type { MailConfig } from "./EmailSettings";
+import CreateAccount from "./CreateAccount";
+import SecretField from "./SecretField";
+import { bureauName } from "../../packages/shared/catalog";
 import OfficialPicker, { clearOfficialSearchCache } from "./OfficialPicker";
 interface Config {
+  runtime: MailConfig;
+  secrets: { name: string; last_four: string }[];
+  units: {
+    code: string;
+    name: string;
+    unit_type: string;
+    active: number;
+    verification: string;
+  }[];
+  logs: { action: string; detail: string; created_at: string }[];
+  account_email: string;
+  is_demo: number;
+  encryption_ready: boolean;
+  current_id: string;
   settings: { support_email: string; sender_email: string };
   officials: Official[];
   current_database: { name: string; type: string };
@@ -28,6 +47,7 @@ export default function Admin({
   section: string;
 }) {
   const helpId = useId();
+  const [accountView, setAccountView] = useState("directory");
   const [source, setSource] = useState("");
   const [account, setAccount] = useState<Official | null>(null),
     [accountRole, setAccountRole] = useState("official");
@@ -39,7 +59,7 @@ export default function Admin({
     let active = true;
     setData(null);
     Promise.all([
-      api<Config>("/admin"),
+      api<Config>("/admin?section=" + encodeURIComponent(section)),
       new Promise((resolve) => setTimeout(resolve, reduced() ? 0 : 1000)),
     ])
       .then(([value]) => {
@@ -51,7 +71,7 @@ export default function Admin({
     return () => {
       active = false;
     };
-  }, [version]);
+  }, [version, section]);
   async function save(e: FormEvent<HTMLFormElement>, action: string) {
     e.preventDefault();
     setBusy(true);
@@ -93,12 +113,41 @@ export default function Admin({
       )}
       {message && <p role="status">{message}</p>}
       {section === "Accounts" && (
+        <div className="ws-tabs">
+          <button
+            className={accountView === "directory" ? "active" : ""}
+            onClick={() => setAccountView("directory")}
+          >
+            Directory
+          </button>
+          <button
+            className={accountView === "create" ? "active" : ""}
+            onClick={() => setAccountView("create")}
+          >
+            Create
+          </button>
+        </div>
+      )}
+      {section === "Accounts" && accountView === "create" && (
+        <CreateAccount
+          units={data.units}
+          officials={data.officials}
+          demo={!!data.is_demo}
+          onSaved={() => {
+            setMessage("Created");
+            setAccountView("directory");
+            refresh();
+          }}
+        />
+      )}
+      {section === "Accounts" && accountView === "directory" && (
         <div className="ws-admin-grid">
           <section className="ws-card">
             <h2>Authority</h2>
             <form onSubmit={(e) => void save(e, "reporting")}>
               <OfficialPicker
                 name="official_id"
+                kind="account"
                 label="Official"
                 officials={data.officials}
                 required
@@ -131,6 +180,25 @@ export default function Admin({
                 Save
               </button>
             </form>
+            {account && (
+              <form
+                className="ws-account-email"
+                onSubmit={(e) => void save(e, "account_email")}
+              >
+                <input type="hidden" name="official_id" value={account.id} />
+                <label>
+                  Email
+                  <input
+                    name="email"
+                    type="email"
+                    required
+                    defaultValue={account.email || ""}
+                    key={account.id}
+                  />
+                </label>
+                <button disabled={busy}>Save email</button>
+              </form>
+            )}
           </section>
           <section className="ws-card ws-accounts-list">
             <h2>Officials</h2>
@@ -151,7 +219,7 @@ export default function Admin({
                         {o.name}
                         <small>{o.id}</small>
                       </td>
-                      <td>{o.bureau}</td>
+                      <td>{bureauName(o.bureau)}</td>
                       <td>{o.role}</td>
                       <td>
                         {data.officials.find((m) => m.id === o.manager_id)
@@ -192,28 +260,153 @@ export default function Admin({
         </section>
       )}
       {section === "Email" && (
-        <section className="ws-card ws-admin-form">
-          <h2>Addresses</h2>
-          <form onSubmit={(e) => void save(e, "settings")}>
-            <label title="Contact for account help.">
-              Support
-              <input
-                name="support_email"
-                type="email"
-                defaultValue={data.settings.support_email}
-              />
+        <EmailSettings
+          key={version}
+          config={data.runtime}
+          secrets={data.secrets}
+          demo={!!data.is_demo}
+          accountEmail={data.account_email}
+          onSaved={refresh}
+        />
+      )}
+      {section === "Server" && (
+        <div className="ws-admin-grid">
+          <section className="ws-card">
+            <h2>Server</h2>
+            <form onSubmit={(e) => void save(e, "server")}>
+              <label>
+                Name
+                <input
+                  name="site_name"
+                  defaultValue={data.runtime.site_name}
+                  required
+                  maxLength={80}
+                />
+              </label>
+              <label title="Public HTTPS URL used in recovery and case-update links.">
+                URL
+                <input
+                  name="public_url"
+                  type="url"
+                  defaultValue={data.runtime.public_url}
+                  required
+                />
+              </label>
+              <label title="Session lifetime after sign-in. Changing this affects new sessions.">
+                Session hours
+                <input
+                  name="session_hours"
+                  type="number"
+                  min={1}
+                  max={24}
+                  defaultValue={data.runtime.session_hours}
+                  required
+                />
+              </label>
+              <label title="Days before each case-specific due date to begin reminders. This does not impose a universal case deadline.">
+                Reminder days
+                <input
+                  name="reminder_days"
+                  type="number"
+                  min={1}
+                  max={30}
+                  defaultValue={data.runtime.reminder_days}
+                  required
+                />
+              </label>
+              <button className="ws-primary" disabled={busy}>
+                Save
+              </button>
+            </form>
+          </section>
+          <section className="ws-card">
+            <h2>Setup</h2>
+            <dl>
+              <dt>Database</dt>
+              <dd>{data.current_database.name}</dd>
+              <dt>Encryption</dt>
+              <dd>{data.encryption_ready ? "Configured" : "Unavailable"}</dd>
+              <dt>Recovery</dt>
+              <dd>{data.runtime.recovery_enabled ? "Enabled" : "Disabled"}</dd>
+              <dt>Updates</dt>
+              <dd>{data.runtime.updates_enabled ? "Enabled" : "Disabled"}</dd>
+              <dt>Reminders</dt>
+              <dd>{data.runtime.reminders_enabled ? "Enabled" : "Disabled"}</dd>
+            </dl>
+            {data.is_demo === 1 && <a href="/it/setup">Production setup →</a>}
+            <h3>Activity</h3>
+            {data.logs.map((r, i) => (
+              <p key={i}>
+                <b>{r.action.replaceAll("_", " ")}</b>
+                <small>
+                  {r.detail} · {new Date(r.created_at).toLocaleString("en-IN")}
+                </small>
+              </p>
+            ))}
+          </section>
+        </div>
+      )}
+      {section === "Bureaus" && (
+        <section className="ws-card">
+          <h2>Catalogue</h2>
+          <div className="ws-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Verification</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.units.map((u) => (
+                  <tr key={u.code}>
+                    <td>{u.code}</td>
+                    <td>{u.name}</td>
+                    <td>{u.unit_type}</td>
+                    <td>{u.verification}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <form
+            className="ws-admin-form"
+            onSubmit={(e) => void save(e, "unit")}
+          >
+            <label>
+              Code
+              <input name="code" required maxLength={30} list="unit-codes" />
+              <datalist id="unit-codes">
+                {data.units.map((u) => (
+                  <option key={u.code} value={u.code}>
+                    {u.name}
+                  </option>
+                ))}
+              </datalist>
             </label>
-            <label title="Sender address for recovery mail. The mail provider must verify it before delivery is enabled.">
-              Sender
-              <input
-                name="sender_email"
-                type="email"
-                defaultValue={data.settings.sender_email}
-              />
+            <label>
+              Name
+              <input name="name" required maxLength={150} />
             </label>
-            <button disabled={busy} className="ws-primary">
-              Save
-            </button>
+            <label>
+              Type
+              <select name="unit_type">
+                <option>Bureau</option>
+                <option>Cell</option>
+                <option>Programme</option>
+              </select>
+            </label>
+            <label className="ws-checkbox">
+              <input name="active" type="checkbox" defaultChecked />
+              Active
+            </label>
+            <label className="ws-checkbox">
+              <input name="verification" type="checkbox" value="verified" />
+              Verified
+            </label>
+            <button disabled={busy || !!data.is_demo}>Save</button>
           </form>
         </section>
       )}
@@ -361,6 +554,15 @@ export default function Admin({
                   </select>
                 </label>
               </>
+            )}
+            {source === "postgres" && (
+              <SecretField
+                name="password"
+                label="Password"
+                secretName="postgres_password"
+                saved={data.secrets.some((s) => s.name === "postgres_password")}
+                disabled={!!data.is_demo}
+              />
             )}
             {source && (
               <button className="ws-primary" disabled={busy}>

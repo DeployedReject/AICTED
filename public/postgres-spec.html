@@ -319,5 +319,5 @@
       </p>
       <small>AICTED · Target specification v1 · 26 October 2026</small>
     </main>
-  </body>
+  <section><h2>Production settings and delivery</h2><p>The target also needs org_units, case_relations, runtime_settings, secret_store, admin_audit, password_resets, recovery_usage, mail_daily, notification_outbox and production_bootstrap. Secret ciphertext uses AES-GCM and needs the existing CONFIG_KEY; moving ciphertext without that key loses access. Audit and case history are append-only. The PostgreSQL adapter must enqueue formal case updates transactionally in notification_outbox, with unique mail event IDs and the same production-only delivery checks.</p><p>Keep official email addresses lowercase and unique within each dataset. Preserve session and reset-token hashes; never export plaintext tokens. Rebuild PostgreSQL full-text indexes from official records instead of copying D1 FTS5 internal tables. Apply the reference bureau/category catalogue before importing cases. Runtime migration is still preparation only; D1 remains active.</p></section></body>
 </html>

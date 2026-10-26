@@ -141,6 +141,14 @@ export function NavIcon({ name }: { name: string }) {
       </>
     ),
   };
+  paths.Overlaps = (
+    <>
+      <rect x="2" y="3" width="10" height="10" />
+      <rect x="8" y="8" width="10" height="10" />
+    </>
+  );
+  paths.Server = paths.Administration;
+  paths.Bureaus = paths.Institutions;
   paths.Accounts = paths.Team;
   paths.Database = paths.Administration;
   paths.Email = <path d="M2 4h16v12H2zM2 5l8 6 8-6" />;

@@ -2,6 +2,9 @@ import type { Official } from "../packages/shared/types";
 export interface Env {
   DB: D1Database;
   INTERNAL_SECRET: string;
+  CONFIG_KEY?: string;
+  BOOTSTRAP_TOKEN?: string;
+  NOTIFICATIONS?: Fetcher;
   CASEWORK: Fetcher;
   RELEVANCE: Fetcher;
   ASSETS: Fetcher;

@@ -7,6 +7,8 @@ export interface Official {
   role: UserRole;
   manager_id: string | null;
   is_demo: number;
+  email?: string;
+  active?: number;
 }
 export type Lifecycle =
   "Pending" | "Under process" | "Awaiting information" | "Disposed";
@@ -99,16 +101,30 @@ export interface Summary {
   overdue: number;
   escalated: number;
   proposed: number;
+  overlaps: number;
+  due_soon: number;
 }
 export interface Bootstrap {
   user: Official;
   officials: Official[];
   tags: Tag[];
   summary: Summary;
+  units: {
+    code: string;
+    name: string;
+    unit_type: string;
+    verification: string;
+  }[];
 }
 export interface CaseDetail {
   case: CaseRecord;
   events: CaseEvent[];
   coordination: Coordination[];
   candidates: { bureau: string }[];
+  relations: {
+    kind: string;
+    created_at: string;
+    related_id: string | null;
+    subject: string | null;
+  }[];
 }

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { Official } from "../../packages/shared/types";
 import { api } from "./api";
+import { bureauName } from "../../packages/shared/catalog";
 type Result = { officials: Official[]; more: boolean };
 const cache = new Map<string, { time: number; result: Result }>();
 const pending = new Map<string, Promise<Result>>();
@@ -13,13 +14,21 @@ const matches = (o: Official, q: string) => {
     text.includes(term),
   );
 };
-async function find(query: string, role: string, bureau: string) {
-  const key = JSON.stringify([query, role, bureau]),
+async function find(
+  query: string,
+  role: string,
+  bureau: string,
+  kind: string,
+  excludeBureau: string,
+) {
+  const key = JSON.stringify([query, role, bureau, kind, excludeBureau]),
     hit = cache.get(key);
   if (hit && Date.now() - hit.time < 300000) return hit.result;
   const superset = [...cache.entries()].find(([k, v]) => {
-    const [old, r, b] = JSON.parse(k);
+    const [old, r, b, oldKind, oldExclude] = JSON.parse(k);
     return (
+      oldKind === kind &&
+      oldExclude === excludeBureau &&
       r === role &&
       b === bureau &&
       query.startsWith(old) &&
@@ -34,7 +43,14 @@ async function find(query: string, role: string, bureau: string) {
     };
   if (pending.has(key)) return pending.get(key)!;
   const task = api<Result>(
-    "/admin/officials?" + new URLSearchParams({ q: query, role, bureau }),
+    "/officials?" +
+      new URLSearchParams({
+        q: query,
+        role,
+        bureau,
+        kind,
+        exclude_bureau: excludeBureau,
+      }),
   )
     .then((result) => {
       cache.set(key, { time: Date.now(), result });
@@ -54,7 +70,15 @@ export default function OfficialPicker({
   value = "",
   required = false,
   onSelect,
+  kind = "recipient",
+  excludeBureau = "",
+  complete = false,
+  excludeId = "",
 }: {
+  kind?: string;
+  excludeBureau?: string;
+  complete?: boolean;
+  excludeId?: string;
   name: string;
   label: string;
   officials: Official[];
@@ -81,7 +105,9 @@ export default function OfficialPicker({
       o.role !== "it" &&
       (!role || o.role === role) &&
       (!bureau || o.bureau === bureau) &&
-      !(name === "official_id" && o.id === "0000"),
+      (!excludeBureau || o.bureau !== excludeBureau) &&
+      !(kind === "account" && o.id === "0000") &&
+      o.id !== excludeId,
   );
   useEffect(() => {
     setSelected(value);
@@ -95,14 +121,14 @@ export default function OfficialPicker({
     setError("");
     setResults(choices.filter((o) => matches(o, q)).slice(0, 8));
     setMore(false);
-    if (q.length < 2 || selected || officials.length < 100) {
+    if (q.length < 2 || selected || complete) {
       setBusy(false);
       return;
     }
     let current = true;
     const timer = setTimeout(() => {
       setBusy(true);
-      find(q, role, bureau)
+      find(q, role, bureau, kind, excludeBureau)
         .then((result) => {
           if (!current) return;
           const combined = new Map(
@@ -112,7 +138,11 @@ export default function OfficialPicker({
           );
           setResults(
             [...combined.values()]
-              .filter((o) => !(name === "official_id" && o.id === "0000"))
+              .filter(
+                (o) =>
+                  !(kind === "account" && o.id === "0000") &&
+                  o.id !== excludeId,
+              )
               .slice(0, 8),
           );
           setMore(result.more || combined.size > 8);
@@ -128,7 +158,7 @@ export default function OfficialPicker({
       current = false;
       clearTimeout(timer);
     };
-  }, [query, open, role, bureau, selected]);
+  }, [query, open, role, bureau, selected, kind, excludeBureau, complete]);
   function choose(o: Official) {
     setSelected(o.id);
     setQuery(o.name);
@@ -203,7 +233,7 @@ export default function OfficialPicker({
                     {o.id} · {o.designation}
                   </small>
                 </span>
-                <small>{o.bureau}</small>
+                <small>{bureauName(o.bureau)}</small>
               </button>
             ))}
           </div>

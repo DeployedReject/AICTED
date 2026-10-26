@@ -14,8 +14,12 @@ import ThemeToggle from "../ThemeToggle";
 import { api } from "./api";
 import "./workspace.css";
 import Admin from "./Admin";
+import Overlaps from "./Overlaps";
+import OfficialPicker from "./OfficialPicker";
+import { bureauName, registerUnits } from "../../packages/shared/catalog";
 import { Scene, SlidingNav, Counter, reduced, NavIcon } from "./Motion";
 import ReportCharts from "./ReportCharts";
+import ReportPeriods from "./ReportPeriods";
 import caseGlyph from "../../Assets/glyphs/file-svgrepo-com.svg";
 import mailGlyph from "../../Assets/glyphs/mail-svgrepo-com.svg";
 
@@ -29,7 +33,10 @@ type Page =
   | "Team"
   | "Accounts"
   | "Email"
-  | "Database";
+  | "Database"
+  | "Server"
+  | "Bureaus"
+  | "Overlaps";
 const date = (s: string) =>
   new Date(s).toLocaleDateString("en-IN", {
     day: "numeric",
@@ -145,7 +152,7 @@ function CaseTable({
               </td>
               <td>
                 {c.assigned_name}
-                <small>{c.bureau}</small>
+                <small>{bureauName(c.bureau)}</small>
               </td>
               <td
                 className={
@@ -173,7 +180,7 @@ export default function Workspace() {
     () => document.documentElement.dataset.theme || "light",
   );
   const [version, setVersion] = useState(0),
-    [page, setPage] = useState<Page>(isIT ? "Accounts" : "My Work"),
+    [page, setPage] = useState<Page>(isIT ? "Server" : "My Work"),
     [selected, setSelectedState] = useState<string | null>(() =>
       new URLSearchParams(location.search).get("case"),
     ),
@@ -214,6 +221,7 @@ export default function Workspace() {
       </div>
     );
   const user = boot.user;
+  registerUnits(boot.units || []);
   if ((user.role === "it") !== isIT) {
     location.replace(user.role === "it" ? "/it/workspace" : "/workspace");
     return null;
@@ -231,10 +239,18 @@ export default function Workspace() {
         <SlidingNav selected={page}>
           {(
             (isIT
-              ? ["Accounts", "Institutions", "Email", "Database"]
+              ? [
+                  "Server",
+                  "Accounts",
+                  "Bureaus",
+                  "Institutions",
+                  "Email",
+                  "Database",
+                ]
               : [
                   "My Work",
                   "Cases",
+                  "Overlaps",
                   ...(user.role === "manager" ? ["Team"] : []),
                   "Institutions",
                   "Messages",
@@ -272,7 +288,7 @@ export default function Workspace() {
           ))}
         </SlidingNav>
         <div className="ws-sidebar-bottom">
-          <span>{user.bureau}</span>
+          <span>{bureauName(user.bureau)}</span>
           <b>{user.name}</b>
           <small>
             {user.designation} · {user.id}
@@ -300,28 +316,6 @@ export default function Workspace() {
                   : page}
           </span>
           <div>
-            {user.is_demo === 1 && !isIT && (
-              <select
-                className="ws-persona"
-                aria-label="Demo official"
-                value={user.id}
-                onChange={(e) => {
-                  sessionStorage.setItem("demo-actor", e.target.value);
-                  setSelected(null);
-                  setCreating(false);
-                  setPage("My Work");
-                  refresh();
-                }}
-              >
-                {boot.officials
-                  .filter((o) => o.role !== "it")
-                  .map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name} · {o.designation}
-                    </option>
-                  ))}
-              </select>
-            )}
             <ThemeToggle
               theme={theme}
               onToggle={() => {
@@ -384,6 +378,18 @@ export default function Workspace() {
                   )}
                 </div>
                 {page === "My Work" && (
+                  <div className="ws-attention">
+                    <button onClick={() => setPage("Overlaps")}>
+                      <span>Overlaps</span>
+                      <b>{boot.summary.overlaps}</b>
+                    </button>
+                    <span className="ws-due-count">
+                      <span>Due soon</span>
+                      <b>{boot.summary.due_soon}</b>
+                    </span>
+                  </div>
+                )}
+                {page === "My Work" && (
                   <div className="ws-metrics">
                     {[
                       ["Cases in your scope", boot.summary.total],
@@ -432,6 +438,9 @@ export default function Workspace() {
                     />
                   </>
                 )}
+                {page === "Overlaps" && (
+                  <Overlaps version={version} open={setSelected} />
+                )}
                 {page === "Reports" && <Reports version={version} />}
                 {isIT && (
                   <Admin version={version} refresh={refresh} section={page} />
@@ -473,7 +482,8 @@ function CaseList({
     [region, setRegion] = useState(""),
     [from, setFrom] = useState(""),
     [to, setTo] = useState(""),
-    [cursor, setCursor] = useState("");
+    [cursor, setCursor] = useState(""),
+    [attention, setAttention] = useState("");
   const [instSearch, setInstSearch] = useState("");
   useEffect(() => {
     const timer = setTimeout(() => setSearch(q), 350);
@@ -497,6 +507,7 @@ function CaseList({
     from,
     to,
     cursor,
+    attention,
   });
   const { data, error } = useLoad<{ cases: CaseRecord[]; next: string | null }>(
     "/cases?" + params,
@@ -539,6 +550,25 @@ function CaseList({
         <CoordinationList version={version} refresh={refresh} open={open} />
       ) : (
         <>
+          <div className="ws-quick-filters" id="attention-cases">
+            {[
+              ["", "All"],
+              ["overdue", "Overdue"],
+              ["due-soon", "Due soon"],
+              ["escalated", "Escalated"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                className={attention === key ? "active" : ""}
+                onClick={() => {
+                  setAttention(key);
+                  setCursor("");
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="ws-filters">
             <input
               aria-label="Search cases"
@@ -615,11 +645,13 @@ function CaseList({
                   onChange={(e) => setBureau(e.target.value)}
                 >
                   <option value="">All Bureaus</option>
-                  {[...new Set(boot.officials.map((o) => o.bureau))].map(
-                    (b) => (
-                      <option key={b}>{b}</option>
-                    ),
-                  )}
+                  {boot.units
+                    .map((unit) => unit.code)
+                    .map((b) => (
+                      <option key={b} value={b}>
+                        {bureauName(b)}
+                      </option>
+                    ))}
                 </select>
                 <input
                   aria-label="Region filter"
@@ -691,7 +723,7 @@ function Team({ version }: { version: number }) {
               <small>
                 {o.designation} · {o.id}
               </small>
-              <small>{o.bureau}</small>
+              <small>{bureauName(o.bureau)}</small>
               <span>{o.active_cases} active cases</span>
             </div>
           ))}
@@ -754,7 +786,8 @@ function CoordinationList({
                 )}
               </h3>
               <p>
-                Selected official: {r.target_name} · {r.target_bureau}
+                Selected official: {r.target_name} ·{" "}
+                {bureauName(r.target_bureau)}
               </p>
               <small>
                 Requested {stamp(r.created_at)}
@@ -969,7 +1002,7 @@ function Board({
                     <time>{stamp(e.created_at)}</time>
                   </div>
                   <small>
-                    {e.actor_name} · {e.designation} · {e.bureau}
+                    {e.actor_name} · {e.designation} · {bureauName(e.bureau)}
                   </small>
                   <p className="ws-pre">{e.body}</p>
                 </article>
@@ -1012,7 +1045,7 @@ function Board({
               <dt>Assigned official</dt>
               <dd>{c.assigned_name}</dd>
               <dt>Bureau</dt>
-              <dd>{c.bureau}</dd>
+              <dd>{bureauName(c.bureau)}</dd>
               <dt>Received</dt>
               <dd>{date(c.received_at)}</dd>
               <dt>Due</dt>
@@ -1086,22 +1119,16 @@ function Board({
                       </>
                     )}
                     {action === "transfer" && (
-                      <label>
-                        Official
-                        <select name="official_id" required>
-                          <option value="">Select official</option>
-                          {boot.officials
-                            .filter(
-                              (o) =>
-                                o.bureau === c.bureau && o.id !== c.assigned_to,
-                            )
-                            .map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {o.name} · {o.id}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
+                      <OfficialPicker
+                        name="official_id"
+                        label="Official"
+                        officials={boot.officials}
+                        bureau={c.bureau}
+                        kind="team"
+                        required
+                        excludeId={c.assigned_to}
+                        complete={boot.officials.length < 100}
+                      />
                     )}
                     <label>
                       Update note
@@ -1121,17 +1148,69 @@ function Board({
             )}
           </section>
           <section className="ws-card">
+            <h2>Relations</h2>
+            {data.relations?.map((r, i) => (
+              <div className="ws-coord-item" key={i}>
+                <Badge>{r.kind}</Badge>
+                {r.related_id ? (
+                  <a
+                    href={"/workspace?case=" + encodeURIComponent(r.related_id)}
+                  >
+                    {r.subject}
+                  </a>
+                ) : (
+                  <span>Restricted case</span>
+                )}
+                <small>{stamp(r.created_at)}</small>
+              </div>
+            ))}
+            {c.can_act && c.intake === "Approved" && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void send(
+                    "/relations",
+                    Object.fromEntries(new FormData(e.currentTarget)),
+                  );
+                }}
+              >
+                <label>
+                  Case ID
+                  <input name="related_case_id" required maxLength={100} />
+                </label>
+                <label>
+                  Relation
+                  <select name="kind">
+                    <option>Related</option>
+                    {boot.user.role === "manager" && <option>Duplicate</option>}
+                    <option>Unrelated</option>
+                  </select>
+                </label>
+                <label>
+                  Reason
+                  <textarea
+                    name="reason"
+                    required
+                    minLength={3}
+                    maxLength={1000}
+                  />
+                </label>
+                <button disabled={busy}>Link</button>
+              </form>
+            )}
+          </section>
+          <section className="ws-card">
             <h2>Coordination</h2>
             {data.candidates.map((b) => (
-              <p key={b.bureau}>
-                Coordination with {b.bureau} possible: matching institution and
-                tags.
+              <p key={bureauName(b.bureau)}>
+                Coordination with {bureauName(b.bureau)} possible: matching
+                institution and tags.
               </p>
             ))}
             {data.coordination.map((r) => (
               <div className="ws-coord-item" key={r.id}>
                 <b>
-                  {r.target_name} · {r.target_bureau}
+                  {r.target_name} · {bureauName(r.target_bureau)}
                 </b>
                 <Badge>{r.status}</Badge>
                 <small>{stamp(r.created_at)}</small>
@@ -1173,23 +1252,15 @@ function Board({
                   });
                 }}
               >
-                <label>
-                  Selected official
-                  <select
-                    required
-                    value={target}
-                    onChange={(e) => setTarget(e.target.value)}
-                  >
-                    <option value="">Choose another Bureau’s official</option>
-                    {boot.officials
-                      .filter((o) => o.bureau !== c.bureau)
-                      .map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name} · {o.designation} · {o.id}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <OfficialPicker
+                  name="target_official_id"
+                  label="Official"
+                  officials={boot.officials}
+                  excludeBureau={c.bureau}
+                  required
+                  complete={boot.officials.length < 100}
+                  onSelect={(o) => setTarget(o?.id || "")}
+                />
                 <label>
                   Why coordinate?
                   <textarea
@@ -1538,8 +1609,7 @@ function Messages({
     version,
   );
   const [failure, setFailure] = useState(""),
-    [busy, setBusy] = useState(false),
-    [query, setQuery] = useState("");
+    [busy, setBusy] = useState(false);
   async function send(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -1594,33 +1664,14 @@ function Messages({
         <h2>New message</h2>
         {failure && <ErrorBox text={failure} />}
         <form onSubmit={send}>
-          <label>
-            Find official
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Designation, name or ID"
-            />
-          </label>
-          <label>
-            To
-            <select name="recipient_id" required>
-              <option value="">Select official</option>
-              {boot.officials
-                .filter(
-                  (o) =>
-                    o.id !== boot.user.id &&
-                    `${o.name} ${o.id} ${o.designation} ${o.bureau}`
-                      .toLowerCase()
-                      .includes(query.toLowerCase()),
-                )
-                .map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name} · {o.designation} · {o.id} · {o.bureau}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <OfficialPicker
+            name="recipient_id"
+            label="To"
+            officials={boot.officials}
+            required
+            excludeId={boot.user.id}
+            complete={boot.officials.length < 100}
+          />
           <label>
             Case ID (optional)
             <input
@@ -1642,6 +1693,9 @@ function Messages({
   );
 }
 interface ReportRow {
+  disposed_at?: string | null;
+  transfers: number;
+  overlaps: number;
   bureau: string;
   region: string;
   status: string;
@@ -1704,11 +1758,13 @@ function Reports({ version }: { version: number }) {
         </span>
         <button onClick={download}>Export</button>
       </div>
-      <div className="ws-metrics">
+      <div className="ws-metrics ws-report-metrics">
         {[
           ["Active", active.length],
           ["Disposed", approved.length - active.length],
           ["Overdue", active.filter((r) => r.due_at < now).length],
+          ["Transferred", data.rows.filter((r) => r.transfers > 0).length],
+          ["Overlaps", data.rows.filter((r) => r.overlaps).length],
           ["Review", data.rows.filter((r) => r.intake === "Submitted").length],
         ].map(([label, n]) => (
           <div key={label}>
@@ -1717,7 +1773,22 @@ function Reports({ version }: { version: number }) {
           </div>
         ))}
       </div>
+      <div className="ws-report-note">
+        <span>Disposal rate</span>
+        <b>
+          {approved.length
+            ? Math.round(
+                ((approved.length - active.length) / approved.length) * 100,
+              )
+            : 0}
+          %
+        </b>
+        <span title="Elapsed days from the original received date for cases still active. Overdue separately compares the due date.">
+          Ageing = days since receipt
+        </span>
+      </div>
       <ReportCharts rows={data.rows} />
+      <ReportPeriods rows={data.rows} />
     </>
   );
 }

@@ -2,60 +2,51 @@ import type { Env } from "../shared";
 import { body, fail, guard, json, userColumns } from "../shared";
 import type { Official } from "../../packages/shared/types";
 
-const hex = (bytes: ArrayBuffer) =>
-  [...new Uint8Array(bytes)]
-    .map((n) => n.toString(16).padStart(2, "0"))
-    .join("");
-const sha = async (text: string) =>
-  hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
-async function passwordHash(password: string, salt: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  return hex(
-    await crypto.subtle.deriveBits(
-      {
-        name: "PBKDF2",
-        salt: Uint8Array.from(salt.match(/../g) || [], (h) => parseInt(h, 16)),
-        iterations: 100000,
-        hash: "SHA-256",
-      },
-      key,
-      256,
-    ),
-  );
-}
-async function session(
-  request: Request,
-  env: Env,
-): Promise<Official & { portal: string }> {
-  const token = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith("aicted_session="))
-    ?.slice(15);
-  if (!token || token.length > 150) fail(401, "Please sign in.");
-  const user = await env.DB.prepare(
-    `SELECT ${userColumns
-      .split(",")
-      .map((c) => "u." + c)
-      .join(
-        ",",
-      )},s.portal FROM sessions s JOIN officials u ON u.id=s.official_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`,
-  )
-    .bind(await sha(token), Math.floor(Date.now() / 1000))
-    .first<Official & { portal: string }>();
-  if (!user) fail(401, "Your session has expired. Please sign in again.");
-  return user;
-}
+import { session, sha, passwordHash } from "../auth";
+import { HttpError } from "../shared";
+import { identity } from "./identity";
+import { runtime } from "../runtime";
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
+    const protectedPage = /^\/(?:workspace|it\/workspace)(?:\/|$)/.test(
+      url.pathname,
+    );
+    if (protectedPage) {
+      try {
+        const user = await session(request, env);
+        const it = url.pathname.startsWith("/it/");
+        if ((user.role === "it") !== it)
+          return Response.redirect(
+            new URL(
+              user.role === "it" ? "/it/workspace" : "/workspace",
+              url,
+            ).toString(),
+            302,
+          );
+        const response = await env.ASSETS.fetch(request);
+        const headers = new Headers(response.headers);
+        headers.set("Cache-Control", "private, no-store");
+        return new Response(response.body, {
+          status: response.status,
+          headers,
+        });
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 401)
+          return Response.redirect(
+            new URL(
+              url.pathname.startsWith("/it/") ? "/it" : "/",
+              url,
+            ).toString(),
+            302,
+          );
+        return json({ error: "Sign-in is temporarily unavailable." }, 503);
+      }
+    }
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     return guard(async () => {
       if (
@@ -63,6 +54,8 @@ export default {
         request.headers.get("origin") !== url.origin
       )
         fail(403, "Request origin is not allowed.");
+      const publicAction = await identity(request, env);
+      if (publicAction) return publicAction;
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
         if (
           env.AUTH_LIMITER &&
@@ -119,22 +112,32 @@ export default {
           fail(403, "Use the official sign-in.");
         if (portal === "official" && user.role === "it")
           fail(403, "Use the IT sign-in.");
+        let sessionId = user.id;
+        if (portal === "it" && user.id === "0000" && user.is_demo === 1) {
+          const demoIT = await env.DB.prepare(
+            "SELECT id FROM officials WHERE id='DEMO-IT' AND role='it' AND is_demo=1 AND active=1",
+          ).first<{ id: string }>();
+          if (!demoIT) fail(403, "The demo IT account is unavailable.");
+          sessionId = demoIT.id;
+        }
         const token = crypto.randomUUID() + crypto.randomUUID();
-        const expires = Math.floor(Date.now() / 1000) + 8 * 60 * 60;
+        const cfg = await runtime(env, user.is_demo);
+        const seconds = cfg.session_hours * 3600;
+        const expires = Math.floor(Date.now() / 1000) + seconds;
         await env.DB.batch([
           env.DB.prepare(
             "DELETE FROM sessions WHERE official_id=? AND expires_at<?",
           ).bind(user.id, Math.floor(Date.now() / 1000)),
           env.DB.prepare(
             "INSERT INTO sessions(token_hash,official_id,expires_at,portal) VALUES(?,?,?,?)",
-          ).bind(await sha(token), user.id, expires, portal),
+          ).bind(await sha(token), sessionId, expires, portal),
         ]);
         const { password_hash: _hash, password_salt: _salt, ...safe } = user;
         return new Response(JSON.stringify({ user: safe }), {
           headers: {
             "Content-Type": "application/json",
             "Cache-Control": "no-store",
-            "Set-Cookie": `aicted_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${url.protocol === "https:" ? "; Secure" : ""}`,
+            "Set-Cookie": `aicted_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${seconds}${url.protocol === "https:" ? "; Secure" : ""}`,
           },
         });
       }
@@ -159,26 +162,7 @@ export default {
       }
       let user = await session(request, env);
 
-      // The single public test login may preview only preconfigured demo personas.
-      // This never changes the authenticated session or permits a real account.
       const sessionUserId = user.id;
-      const previewId =
-        user.portal === "it" && user.id === "0000" && user.is_demo === 1
-          ? "DEMO-IT"
-          : request.headers.get("x-demo-actor");
-      const portal = user.portal;
-      if (previewId && user.id === "0000" && user.is_demo === 1) {
-        const preview = await env.DB.prepare(
-          `SELECT ${userColumns} FROM officials WHERE id=? AND is_demo=1 AND active=1`,
-        )
-          .bind(previewId)
-          .first<Official>();
-        if (!preview)
-          fail(403, "Only configured demo officials can be previewed.");
-        if ((portal === "it") !== (preview.role === "it"))
-          fail(403, "Use the separate IT sign-in.");
-        user = { ...preview, portal };
-      }
       if (url.pathname === "/api/auth/me") return json({ user });
       if (
         request.method !== "GET" &&
@@ -188,9 +172,36 @@ export default {
         fail(429, "Please wait a minute before making more changes.");
       const headers = new Headers(request.headers);
       headers.delete("cookie");
+      headers.delete("x-demo-actor");
       headers.set("x-internal-secret", env.INTERNAL_SECRET);
       headers.set("x-actor", JSON.stringify(user));
-      return env.CASEWORK.fetch(new Request(request, { headers }));
+      const response = await env.CASEWORK.fetch(
+        new Request(request, { headers }),
+      );
+      if (
+        !user.is_demo &&
+        request.method === "POST" &&
+        response.ok &&
+        env.NOTIFICATIONS
+      )
+        ctx.waitUntil(
+          env.NOTIFICATIONS.fetch(
+            new Request("https://private/dispatch", {
+              method: "POST",
+              headers: {
+                "x-internal-secret": env.INTERNAL_SECRET,
+                "x-actor": JSON.stringify(user),
+                "Content-Type": "application/json",
+              },
+              body: "{}",
+            }),
+          )
+            .then(() => {})
+            .catch(() => {
+              console.error("Notification dispatch unavailable.");
+            }),
+        );
+      return response;
     });
   },
 } satisfies ExportedHandler<Env>;

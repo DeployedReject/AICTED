@@ -45,7 +45,22 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [setupAvailable, setSetupAvailable] = useState(false),
+    [supportEmail, setSupportEmail] = useState("");
+  useEffect(() => {
+    if (isIT)
+      api<{ available: boolean }>("/auth/setup-status")
+        .then((r) => setSetupAvailable(r.available))
+        .catch(() => {});
+  }, [isIT]);
+
   const [dialog, setDialog] = useState<Dialog>(null);
+  useEffect(() => {
+    if (dialog === "support")
+      api<{ support_email: string }>("/public-config")
+        .then((r) => setSupportEmail(r.support_email))
+        .catch(() => {});
+  }, [dialog]);
   const modal = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -105,9 +120,15 @@ export default function App() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (view === "recovery") {
-      setNotice(
-        "Contact your administrator to reset your password. Email recovery is not configured.",
-      );
+      const data = new FormData(event.currentTarget);
+      setBusy(true);
+      setNotice("");
+      void api<{ message: string }>("/auth/recover", {
+        email: data.get("email"),
+      })
+        .then((r) => setNotice(r.message))
+        .catch((e) => setNotice(e.message))
+        .finally(() => setBusy(false));
       return;
     }
     if (audience === "institution") {
@@ -127,7 +148,9 @@ export default function App() {
   const dialogContent = {
     support: {
       title: "Need a hand?",
-      text: "Contact your AICTE administrator for account help. Support contact details will appear here once configured.",
+      text: supportEmail
+        ? `Contact ${supportEmail} for account help.`
+        : "Contact your administrator for account help.",
     },
     access: {
       title: "Institution access",
@@ -328,6 +351,7 @@ export default function App() {
                     </button>
                   </form>
                   <div className="login-links">
+                    {isIT && setupAvailable && <a href="/it/setup">Setup</a>}
                     <button
                       className="text-button"
                       type="button"

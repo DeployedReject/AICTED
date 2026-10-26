@@ -1,6 +1,8 @@
 import type { Official } from "../../packages/shared/types";
 import type { Env } from "../shared";
 import { body, fail, json, now, textField, userColumns } from "../shared";
+import { production } from "./production";
+import { runtime } from "../runtime";
 export async function admin(request: Request, env: Env, user: Official) {
   if (user.role !== "it") fail(403, "IT administration access is required.");
   const db = env.DB;
@@ -31,29 +33,75 @@ export async function admin(request: Request, env: Env, user: Official) {
   }
 
   if (request.method === "GET") {
-    const [settings, officials, migration] = await Promise.all([
+    const section = url.searchParams.get("section") || "Accounts";
+    const [
+      settings,
+      officials,
+      migration,
+      cfg,
+      secrets,
+      units,
+      logs,
+      accountEmail,
+    ] = await Promise.all([
       db
         .prepare(
-          "SELECT support_email,sender_email,updated_at FROM workspace_settings WHERE is_demo=?",
+          "SELECT support_email,sender_email FROM workspace_settings WHERE is_demo=?",
         )
         .bind(user.is_demo)
         .first(),
+      section === "Accounts"
+        ? db
+            .prepare(
+              `SELECT ${userColumns},email,active FROM officials WHERE is_demo=? ORDER BY name LIMIT 100`,
+            )
+            .bind(user.is_demo)
+            .all()
+        : Promise.resolve({ results: [] }),
+      section === "Database"
+        ? db
+            .prepare(
+              "SELECT source,d1_database_id,host,port,database_name,username,ssl_mode,updated_at FROM migration_settings WHERE is_demo=?",
+            )
+            .bind(user.is_demo)
+            .first()
+        : Promise.resolve(null),
+      runtime(env, user.is_demo),
       db
         .prepare(
-          `SELECT ${userColumns} FROM officials WHERE is_demo=? AND active=1 ORDER BY name LIMIT 100`,
+          "SELECT name,last_four,updated_at FROM secret_store WHERE is_demo=?",
         )
         .bind(user.is_demo)
         .all(),
       db
         .prepare(
-          "SELECT source,d1_database_id,host,port,database_name,username,ssl_mode,updated_at FROM migration_settings WHERE is_demo=?",
+          "SELECT code,name,unit_type,active,verification FROM org_units ORDER BY name",
         )
-        .bind(user.is_demo)
-        .first(),
+        .all(),
+      section === "Server"
+        ? db
+            .prepare(
+              "SELECT action,detail,created_at FROM admin_audit WHERE is_demo=? ORDER BY created_at DESC LIMIT 15",
+            )
+            .bind(user.is_demo)
+            .all()
+        : Promise.resolve({ results: [] }),
+      db
+        .prepare("SELECT email FROM officials WHERE id=?")
+        .bind(user.id)
+        .first<{ email: string }>(),
     ]);
     return json({
       settings: settings || { support_email: "", sender_email: "" },
       officials: officials.results,
+      runtime: cfg,
+      secrets: secrets.results,
+      units: units.results,
+      logs: logs.results,
+      account_email: accountEmail?.email || "",
+      encryption_ready: !!env.CONFIG_KEY,
+      is_demo: user.is_demo,
+      current_id: user.id,
       current_database: { name: "aicted-workspace", type: "SQLite" },
       migration: migration || {
         source: "postgres",
@@ -68,6 +116,8 @@ export async function admin(request: Request, env: Env, user: Official) {
   }
   if (request.method !== "POST") fail(405, "Method not allowed.");
   const input = await body(request);
+  const configured = await production(input, env, user);
+  if (configured) return configured;
   if (input.action === "migration") {
     if (input.source === "d1") {
       const name = textField(input.database_name, "Database", 80),
@@ -115,6 +165,16 @@ export async function admin(request: Request, env: Env, user: Official) {
         user.id,
       )
       .run();
+    if (typeof input.password === "string" && input.password.trim())
+      await production(
+        {
+          action: "secret_save",
+          name: "postgres_password",
+          value: input.password,
+        },
+        env,
+        user,
+      );
     return json({ ok: true, active: "D1" });
   }
   if (input.action === "reporting") {

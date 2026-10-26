@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { bureauName } from "../../packages/shared/catalog";
 interface Row {
   bureau: string;
   region: string;
@@ -331,14 +332,14 @@ export default function ReportCharts({ rows }: { rows: Row[] }) {
         <div className="ws-bureau-bars">
           {bureaus.length ? (
             bureaus.map((b, i) => (
-              <div key={b.name}>
+              <div key={bureauName(b.name)}>
                 <div>
-                  <span>{b.name}</span>
+                  <span>{bureauName(b.name)}</span>
                   <b>{b.active + b.disposed}</b>
                 </div>
                 <div
                   className="ws-stacked-bar"
-                  aria-label={`${b.name}: ${b.active} active, ${b.disposed} disposed`}
+                  aria-label={`${bureauName(b.name)}: ${b.active} active, ${b.disposed} disposed`}
                 >
                   <span
                     style={{
