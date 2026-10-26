@@ -8,13 +8,53 @@ export async function admin(request: Request, env: Env, user: Official) {
   const db = env.DB;
   const control = env.CONTROL_DB || db;
   const url = new URL(request.url);
+  if (url.pathname === "/api/admin/tag-cases" && request.method === "GET") {
+    const kind = url.searchParams.get("kind"),
+      key = textField(url.searchParams.get("id"), "Tag", 100),
+      cursor = (url.searchParams.get("cursor") || "").slice(0, 100);
+    if (kind !== "case" && kind !== "institution")
+      fail(400, "Choose a case tag or institution.");
+    const condition =
+      kind === "institution"
+        ? "c.institution_id=?"
+        : "EXISTS(SELECT 1 FROM json_each(c.tags) j WHERE j.value=?)";
+    const result = await db
+      .prepare(
+        `SELECT c.id,c.subject,c.status,c.intake FROM cases c WHERE c.is_demo=? AND ${condition} AND c.id>? ORDER BY c.id LIMIT 21`,
+      )
+      .bind(user.is_demo, key, cursor)
+      .all<{ id: string; subject: string; status: string; intake: string }>();
+    return json({
+      cases: result.results.slice(0, 20),
+      next: result.results.length > 20 ? result.results[19].id : null,
+    });
+  }
+  if (
+    url.pathname === "/api/admin/tag-institutions" &&
+    request.method === "GET"
+  ) {
+    const query = (url.searchParams.get("q") || "").trim().slice(0, 100);
+    if (query && query.length < 2)
+      return json({ institutions: [], more: false });
+    const prefix = query.replace(/[\\%_]/g, "\\$&") + "%";
+    const result = await db
+      .prepare(
+        "WITH counts AS (SELECT institution_id,COUNT(*) case_count FROM cases WHERE is_demo=? GROUP BY institution_id) SELECT i.id,i.name,i.permanent_id,COALESCE(counts.case_count,0) case_count FROM institutions i LEFT JOIN counts ON counts.institution_id=i.id WHERE i.is_demo=? AND (i.name LIKE ? ESCAPE '\\' OR i.permanent_id LIKE ? ESCAPE '\\') ORDER BY case_count DESC,i.name,i.id LIMIT 21",
+      )
+      .bind(user.is_demo, user.is_demo, prefix, prefix)
+      .all();
+    return json({
+      institutions: result.results.slice(0, 20),
+      more: result.results.length > 20,
+    });
+  }
   if (url.pathname === "/api/admin/tags") {
     if (request.method === "GET") {
       const result = await db
         .prepare(
-          "SELECT code,label,group_name,active,source FROM tags WHERE is_demo=? ORDER BY active DESC,group_name,label LIMIT 201",
+          "WITH counts AS (SELECT j.value code,COUNT(DISTINCT c.id) case_count FROM cases c,json_each(c.tags) j WHERE c.is_demo=? GROUP BY j.value) SELECT t.code,t.label,t.group_name,t.active,t.source,COALESCE(counts.case_count,0) case_count FROM tags t LEFT JOIN counts ON counts.code=t.code WHERE t.is_demo=? ORDER BY t.active DESC,t.group_name,t.label LIMIT 201",
         )
-        .bind(user.is_demo)
+        .bind(user.is_demo, user.is_demo)
         .all();
       return json({ tags: result.results });
     }

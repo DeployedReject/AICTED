@@ -71,7 +71,9 @@ export default {
         path === "/api/admin" ||
         path === "/api/admin/officials" ||
         path === "/api/admin/account" ||
-        path === "/api/admin/tags"
+        path === "/api/admin/tags" ||
+        path === "/api/admin/tag-institutions" ||
+        path === "/api/admin/tag-cases"
       )
         return admin(request, env, user);
       if (request.method === "GET" && path === "/api/bootstrap") {
